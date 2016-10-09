@@ -37,9 +37,9 @@ def readFiles(*paths):
 
 
 def updateFile(path, value):
-    file = open(path, mode="w")  # To update a file
-    file.write(str(unicode(value, errors="replace")))
-    file.close()
+    openFile = open(path, mode="w")  # To update a file
+    openFile.write(str(u""+value))
+    openFile.close()
 
 
 # Read files for persistent values.
@@ -118,7 +118,7 @@ def removePun(argSet, pun):  # Removes a pun from the pun list, then updates the
     updateFile("Puns.txt", str(puns))
 
 
-def addAlias(argSet, *args):  # Adds an alias for a command, or replies what an alias runs.
+def addAlias(argSet, *_):  # Adds an alias for a command, or replies what an alias runs.
     message = argSet[2][8:]
     if message == "":
         return
@@ -164,7 +164,7 @@ def getUserFromName(argSet, partialName):  # Returns the "name" of a user given 
         None) or next((buddies[i] for i in range(len(names)) if partialName.lower() in names[i].lower()), None)
 
 
-def runCommand(argSet, command, *args): # Runs the command given the argSet and the command it's trying to run.
+def runCommand(argSet, command, *args):  # Runs the command given the argSet and the command it's trying to run.
     command = command or argSet[2][:argSet[2].find(" ")]
     if command in commands:
         commands[command](argSet, *args)
@@ -174,13 +174,13 @@ def runCommand(argSet, command, *args): # Runs the command given the argSet and 
         command = message[len(commandDelimiter):message.find(" ") or len(message)].lower()
         message = message[:message.lower().find(command)] + command + message[
         message.lower().find(command) + len(command):]
-        newMsg = message.replace(command, aliases[command][0]).replace("%sendername",
-            purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2]))).replace("%botname",
-            purple.PurpleAccountGetAlias(argSet[0])).replace("%chattitle",
-            purple.PurpleConversationGetTitle(argSet[3])).replace("%chatname",
-            purple.PurpleConversationGetName(argSet[3]))  # Adds a few variables you can put into aliases
-        commands[aliases[command][1][0]]((argSet[0], argSet[1], newMsg, argSet[3], argSet[4]),
-            *(tuple(args) + tuple(aliases[command][1][len(commandDelimiter):])))  # Run the alias's command
+        newMsg = message.replace(command, aliases[command][0]).replace("%sendername", purple.PurpleBuddyGetAlias(
+            purple.PurpleFindBuddy(*argSet[:2]))).replace("%botname", purple.PurpleAccountGetAlias(argSet[0])).replace(
+            "%chattitle", purple.PurpleConversationGetTitle(argSet[3])).replace("%chatname",
+            purple.PurpleConversationGetName(argSet[
+                3]))  # Adds a few variables you can put into aliases
+        commands[aliases[command][1][0]]((argSet[0], argSet[1], newMsg, argSet[3], argSet[4]), *(
+            tuple(args) + tuple(aliases[command][1][len(commandDelimiter):])))  # Run the alias's command
         return True
     return False
 
@@ -202,31 +202,31 @@ def Mimic(argSet, user=None, firstWordOfCmd=None, *_):  # Runs a command as a di
 commands = {  # A dict containing the functions to run when a given command is entered.
     "help": Help,
     "ping": lambda argSet, *args: simpleReply(argSet, "Pong!"),
-    "chats": lambda argSet, *args: simpleReply(argSet,
-        str([str(purple.PurpleConversationGetTitle(conv)) + " (" + str(conv) + ")" for conv in
+    "chats": lambda argSet, *args: simpleReply(argSet, str(
+        [str(purple.PurpleConversationGetTitle(conv)) + " (" + str(conv) + ")" for conv in
             purple.PurpleGetConversations()])[1:-1]),
     "args": lambda argSet, *args: simpleReply(argSet, str(argSet)),
     "echo": lambda argSet, *args: simpleReply(argSet, argSet[2][argSet[2].find("echo") + 4 + len(commandDelimiter):]),
     "exit": lambda *args: sys.exit(0),
-    "msg": lambda argSet, *args: sendMessage(argSet[-2], getConvFromPartialName(args[0]), None,
-        purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2])) + ": " + argSet[2][
-        argSet[2][4 + len(commandDelimiter):].find(" ") + 5 + len(commandDelimiter):]),
+    "msg": lambda argSet, *args: sendMessage(argSet[-2], getConvFromPartialName(args[0]), [],
+        purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2])) + ": " +
+        argSet[2][argSet[2][4 + len(commandDelimiter):].find(" ") + 5 + len(
+            commandDelimiter):]),
     "link": lambda argSet, *args: Link(argSet, *args),
     "unlink": lambda argSet, *args: Unlink(argSet, *args),
     "links": lambda argSet, *args: simpleReply(argSet, str(messageLinks)),
-    "pun": lambda argSet, *args: simpleReply(argSet, getPun(args[0] if len(args) > 0 else None)),
+    "pun": lambda argSet, *args: simpleReply(argSet, getPun(args[0] if len(args) > 0 else [])),
     "addpun": lambda argSet, *args: addPun(argSet, argSet[2][7 + len(commandDelimiter):]),
     "removepun": lambda argSet, *args: removePun(argSet, args[0]),
     "alias": addAlias,
     "unalias": removeAlias,
     "aliases": lambda argSet, *args: simpleReply(argSet, "Valid aliases: {}".format(str(aliases.keys())[1:-1])),
-    "me": lambda argSet, *args: simpleReply(argSet,
-        "*{} {}.".format(purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2])),
-            argSet[2][3 + len(commandDelimiter):])),
-    "botme": lambda argSet, *args: simpleReply(argSet,
-        "*{} {}.".format(purple.PurpleAccountGetAlias(argSet[0]), argSet[2][6 + len(commandDelimiter):])),
-    "randomemoji": lambda argSet, amt=1, *args: simpleReply(argSet,
-        u"".join([emojis.values()[randint(0, len(emojis) - 1)] for i in range(int(amt) or 1)])),
+    "me": lambda argSet, *args: simpleReply(argSet, "*{} {}.".format(
+        purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2])), argSet[2][3 + len(commandDelimiter):])),
+    "botme": lambda argSet, *args: simpleReply(argSet, "*{} {}.".format(purple.PurpleAccountGetAlias(argSet[0]),
+        argSet[2][6 + len(commandDelimiter):])),
+    "randomemoji": lambda argSet, amt=1, *args: simpleReply(argSet, u"".join(
+        [emojis.values()[randint(0, len(emojis) - 1)] for _ in range(int(amt) or 1)])),
     "mimic": Mimic,
     "users": lambda argSet, *args: simpleReply(argSet, str(
         [purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(argSet[0], purple.PurpleConvChatCbGetName(user))) for user in
@@ -268,7 +268,7 @@ def getFullConvName(partialName):  # Returns a full conversation title given a p
 # Returns the conversation ID of a conversation given its partial name.
 getConvFromPartialName = lambda partialName: getConvByName(getFullConvName(partialName))
 
-simpleReply = lambda argSet, message: sendMessage(argSet[-2], argSet[-2], None, message)  # Replies to a chat
+simpleReply = lambda argSet, message: sendMessage(argSet[-2], argSet[-2], [], message)  # Replies to a chat
 
 lastMessage = None  # The last message, to prevent infinite looping.
 
@@ -278,8 +278,7 @@ getConvByName = lambda name: next(
 
 logFile = open("Pidgin_Crossover_Messages.log", mode="a")
 logStr = lambda string: logFile.write(
-    str(u"[{}] ".format(datetime.now().isoformat())) + demojize(string).decode("utf-8",
-        errors="remove"))
+    str(u"[{}] ".format(datetime.now().isoformat())) + demojize(string).decode("utf-8", errors="remove"))
 
 log = lambda string: [fct(string + "\n") for fct in (print, logStr)]  # Prints and writes to the log file.
 
@@ -294,24 +293,25 @@ def sendMessage(sending, receiving, nick, message):  # Sends a message on the gi
     # Actually send the messages out.
     if purple.PurpleConversationGetType(receiving) == 2:  # 2 means a group chat.
         conv = purple.PurpleConvChat(receiving)
-        purple.PurpleConvChatSend(conv, (nick + ": " if nick is not None else "") + emojize(message, True))
+        purple.PurpleConvChatSend(conv, (nick + ": " if nick else "") + emojize(message, True))
     else:
         conv = purple.PurpleConvIm(receiving)
-        purple.PurpleConvImSend(conv, (nick + ": " if nick is not None else "") + emojize(message, True))
+        purple.PurpleConvImSend(conv, (nick + ": " if nick else "") + emojize(message, True))
 
     # I could put this behind debug, but I choose not to. It's pretty enough.
     sendTitle = purple.PurpleConversationGetTitle(sending)
     receiveTitle = purple.PurpleConversationGetTitle(receiving)
     log(demojize(
-        u"Sent \"{}\" from {} ({}) to {} ({}).".format((nick + ": " + message if nick is not None else message),
-            sendTitle, sending, receiveTitle, conv)))  # Sent "message" from chat 1 (chat ID) to chat 2 (chat ID).
+        u"Sent \"{}\" from {} ({}) to {} ({}).".format((nick + ": " + message if nick else message),
+            sendTitle, sending, receiveTitle,
+            conv)))  # Sent "message" from chat 1 (chat ID) to chat 2 (chat ID).
     # Removes emojis from messages, not all consoles support emoji, and not all files can have emojis written to them.
 
     logFile.flush()  # Update the log since it's been written to.
 
 
 # Returns what it says on the tin.
-isListButNotString = lambda obj: isinstance(obj, (list, tuple, set)) and not isinstance(obj, basestring)
+isListButNotString = lambda obj: isinstance(obj, (list, tuple, set)) and not isinstance(obj, (str, unicode))
 
 
 def messageListener(account, sender, message, conversation, flags):
@@ -330,9 +330,9 @@ def messageListener(account, sender, message, conversation, flags):
     nick = purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(account, sender))
     # Logs messages. Logging errors will not prevent commands from working.
     try:
-        logStr(unicode("{}: {}").format(nick, unicode(message)))
+        logStr(u"{}: {}".format(nick, (u"" + message)))
         logFile.flush()
-    except:
+    except UnicodeError:
         pass
     # Run commands if the message starts with the command character.
     if message[0:len(commandDelimiter)] == commandDelimiter:
@@ -340,8 +340,8 @@ def messageListener(account, sender, message, conversation, flags):
         args = message.split(" ")[1:]
         argSet = (account, sender, message, conversation, flags)
         if not runCommand(argSet, command, *args):
-            simpleReply(argSet, "Command/alias \"{}\" not found. Valid commands: {} Valid aliases: {}".format(command,
-                str(sorted(commands.keys()))[1:-1], str(sorted(aliases.keys()))[1:-1]))
+            simpleReply(argSet, "Command/alias \"{}\" not found. Valid commands: {} Valid aliases: {}".format(
+                command, str(sorted(commands.keys()))[1:-1], str(sorted(aliases.keys()))[1:-1]))
         return  # Commands are not to be sent out to other chats!
 
     # If the message was not a command, continue.
