@@ -369,4 +369,3 @@ purple.ReceivedImMsg.connect(messageListener)
 purple.ReceivedChatMsg.connect(messageListener)
 
 GObject.MainLoop().run()
-# 4/Vm4EVMEipb_5BK9s_PL9NIf6aofuvPTrAUgY_ADej_0 oauth
