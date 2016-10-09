@@ -8,6 +8,7 @@ A bot built on top of pidgin/finch (Maybe other libpurple clients?) using the DB
 It can run on any linux-based system that supports libpurple.
 
 Dependencies:
+
 -Python 2.7 (May run on older versions of python? Is not Python 3 compatible due to Unicode shenanigans)
 
 -PyGObject (pip install PyGObject)
