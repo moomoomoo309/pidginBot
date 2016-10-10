@@ -186,9 +186,10 @@ def runCommand(argSet, command, *args):  # Runs the command given the argSet and
         return True
     elif command in aliases:
         message = argSet[2]
-        command = message[len(commandDelimiter):message.find(" ") or len(message)].lower()
+        command = message[len(commandDelimiter):message.find(" ")+1 if " " in message else len(message)].lower()
         message = message[:message.lower().find(command)] + command + message[
         message.lower().find(command) + len(command):]
+        print(message,argSet[2],command)
         newMsg = message.replace(command, aliases[command][0]).replace("%sendername", purple.PurpleBuddyGetAlias(
             purple.PurpleFindBuddy(*argSet[:2]))).replace("%botname", purple.PurpleAccountGetAlias(argSet[0])).replace(
             "%chattitle", purple.PurpleConversationGetTitle(argSet[3])).replace("%chatname",
