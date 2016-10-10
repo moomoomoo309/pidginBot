@@ -29,16 +29,12 @@ def readFile(path):
     return out
 
 
-def readFiles(*paths):
-    out = []
-    for path in paths:
-        out.append(readFile(path))
-    return out
+readFiles = lambda *paths: [readFile(path) for path in paths]
 
 
 def updateFile(path, value):
     openFile = open(path, mode="w")  # To update a file
-    openFile.write(str(u""+value))
+    openFile.write(str(u"" + value))
     openFile.close()
 
 
@@ -58,13 +54,13 @@ def getPun(punFilter):  # Gets a random pun, or a random pun that satisfies the 
         "Does not punpute! Random Pun: " + puns[randint(0, len(puns) - 1)])
 
 
-def Help(argSet, *args):  # Returns help text for the given command, or a page listing all commands.
+def Help(argSet, page=(), *args):  # Returns help text for the given command, or a page listing all commands.
     iteratableCommands = commands.keys()  # A tuple containing all of the keys in iteratableCommands.
     commandsPerPage = 10  # How many commands to show per page.
-    if len(args) > 0 and args[0].lower() in helpText:  # If the help text for a given command was asked for
+    if page and page.lower() in helpText:  # If the help text for a given command was asked for
         simpleReply(argSet, helpText[args[0].lower()])
-    elif len(args) == 0 or args[0].isdigit():  # If a page number was asked for
-        page = int(args[0]) if len(args) > 0 else 1
+    elif not page or (page and page.isdigit()):  # If a page number was asked for
+        page = int(page) or 1
         helpStr = ""
         helpStr += "Help page {}/{}".format(int(min(page, ceil(1.0 * len(iteratableCommands) / commandsPerPage))),
             int(ceil(1.0 * len(iteratableCommands) / commandsPerPage)))
@@ -139,13 +135,16 @@ def addAlias(argSet, *_):  # Adds an alias for a command, or replies what an ali
     updateFile("Aliases.txt", str(aliases))
 
 
-def removeAlias(argSet, *args):  # Removes an alias to a command.
-    if args[0][len(commandDelimiter):] in aliases:
-        aliases.pop(args[0][len(commandDelimiter):])
-    else:
-        simpleReply(argSet, "No alias \"{}\" found.".format(args[0]))
+def removeAlias(argSet, alias=() ,*_):  # Removes an alias to a command.
+    if not alias:
+        simpleReply(argSet, "Enter an alias to remove!")
         return
-    simpleReply(argSet, "\"{}\" unaliased.".format(args[0]))
+    if alias[len(commandDelimiter):] in aliases:
+        aliases.pop(alias[len(commandDelimiter):])
+    else:
+        simpleReply(argSet, "No alias \"{}\" found.".format(alias))
+        return
+    simpleReply(argSet, "\"{}\" unaliased.".format(alias))
     updateFile("Aliases.txt", str(aliases))
 
 
@@ -177,8 +176,7 @@ def runCommand(argSet, command, *args):  # Runs the command given the argSet and
         newMsg = message.replace(command, aliases[command][0]).replace("%sendername", purple.PurpleBuddyGetAlias(
             purple.PurpleFindBuddy(*argSet[:2]))).replace("%botname", purple.PurpleAccountGetAlias(argSet[0])).replace(
             "%chattitle", purple.PurpleConversationGetTitle(argSet[3])).replace("%chatname",
-            purple.PurpleConversationGetName(argSet[
-                3]))  # Adds a few variables you can put into aliases
+            purple.PurpleConversationGetName(argSet[3]))  # Adds a few variables you can put into aliases
         commands[aliases[command][1][0]]((argSet[0], argSet[1], newMsg, argSet[3], argSet[4]), *(
             tuple(args) + tuple(aliases[command][1][len(commandDelimiter):])))  # Run the alias's command
         return True
@@ -201,34 +199,33 @@ def Mimic(argSet, user=None, firstWordOfCmd=None, *_):  # Runs a command as a di
 
 commands = {  # A dict containing the functions to run when a given command is entered.
     "help": Help,
-    "ping": lambda argSet, *args: simpleReply(argSet, "Pong!"),
-    "chats": lambda argSet, *args: simpleReply(argSet, str(
-        [str(purple.PurpleConversationGetTitle(conv)) + " (" + str(conv) + ")" for conv in
-            purple.PurpleGetConversations()])[1:-1]),
-    "args": lambda argSet, *args: simpleReply(argSet, str(argSet)),
-    "echo": lambda argSet, *args: simpleReply(argSet, argSet[2][argSet[2].find("echo") + 4 + len(commandDelimiter):]),
-    "exit": lambda *args: sys.exit(0),
-    "msg": lambda argSet, *args: sendMessage(argSet[-2], getConvFromPartialName(args[0]), [],
+    "ping": lambda argSet, *_: simpleReply(argSet, "Pong!"),
+    "chats": lambda argSet, *_: simpleReply(argSet, str(
+        [str(purple.PurpleConversationGetTitle(conv)) + " (" + str(conv) + ")" for conv
+            inpurple.PurpleGetConversations()])[1:-1]),
+    "args": lambda argSet, *_: simpleReply(argSet, str(argSet)),
+    "echo": lambda argSet, *_: simpleReply(argSet, argSet[2][argSet[2].find("echo") + 4 + len(commandDelimiter):]),
+    "exit": lambda *_: sys.exit(0),
+    "msg": lambda argSet, msg="", *_: sendMessage(argSet[-2], getConvFromPartialName(msg), [],
         purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2])) + ": " +
-        argSet[2][argSet[2][4 + len(commandDelimiter):].find(" ") + 5 + len(
-            commandDelimiter):]),
+        argSet[2][argSet[2][4 + len(commandDelimiter):].find(" ") + 5 + len(commandDelimiter):]),
     "link": lambda argSet, *args: Link(argSet, *args),
     "unlink": lambda argSet, *args: Unlink(argSet, *args),
-    "links": lambda argSet, *args: simpleReply(argSet, str(messageLinks)),
-    "pun": lambda argSet, *args: simpleReply(argSet, getPun(args[0] if len(args) > 0 else [])),
-    "addpun": lambda argSet, *args: addPun(argSet, argSet[2][7 + len(commandDelimiter):]),
-    "removepun": lambda argSet, *args: removePun(argSet, args[0]),
+    "links": lambda argSet, *_: simpleReply(argSet, str(messageLinks)),
+    "pun": lambda argSet, pun=(), *_: simpleReply(argSet, getPun(pun)),
+    "addpun": lambda argSet, *_: addPun(argSet, argSet[2][7 + len(commandDelimiter):]),
+    "removepun": lambda argSet, pun, *_: removePun(argSet, pun),
     "alias": addAlias,
     "unalias": removeAlias,
-    "aliases": lambda argSet, *args: simpleReply(argSet, "Valid aliases: {}".format(str(aliases.keys())[1:-1])),
-    "me": lambda argSet, *args: simpleReply(argSet, "*{} {}.".format(
+    "aliases": lambda argSet, *_: simpleReply(argSet, "Valid aliases: {}".format(str(aliases.keys())[1:-1])),
+    "me": lambda argSet, *_: simpleReply(argSet, "*{} {}.".format(
         purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2])), argSet[2][3 + len(commandDelimiter):])),
-    "botme": lambda argSet, *args: simpleReply(argSet, "*{} {}.".format(purple.PurpleAccountGetAlias(argSet[0]),
+    "botme": lambda argSet, *_: simpleReply(argSet, "*{} {}.".format(purple.PurpleAccountGetAlias(argSet[0]),
         argSet[2][6 + len(commandDelimiter):])),
-    "randomemoji": lambda argSet, amt=1, *args: simpleReply(argSet, u"".join(
+    "randomemoji": lambda argSet, amt=1, *_: simpleReply(argSet, u"".join(
         [emojis.values()[randint(0, len(emojis) - 1)] for _ in range(int(amt) or 1)])),
     "mimic": Mimic,
-    "users": lambda argSet, *args: simpleReply(argSet, str(
+    "users": lambda argSet, *_: simpleReply(argSet, str(
         [purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(argSet[0], purple.PurpleConvChatCbGetName(user))) for user in
             purple.PurpleConvChatGetUsers(purple.PurpleConvChat(argSet[3]))][:-1]))
 }
@@ -270,7 +267,7 @@ getConvFromPartialName = lambda partialName: getConvByName(getFullConvName(parti
 
 simpleReply = lambda argSet, message: sendMessage(argSet[-2], argSet[-2], [], message)  # Replies to a chat
 
-lastMessage = None  # The last message, to prevent infinite looping.
+lastMessage = ""  # The last message, to prevent infinite looping.
 
 # Gets the ID of a conversation, given its name. Does not work if a message has not been received from that chat yet.
 getConvByName = lambda name: next(
