@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: UTF-8
 
-# emoji and PyGObject are dependencies. "pip install emoji PyGObject --upgrade" will do that for you.
+# emoji, humanize and PyGObject are dependencies. "pip install emoji PyGObject humanize --upgrade" will do that for you.
 from __future__ import print_function
 
 import sys
@@ -9,22 +9,35 @@ from datetime import datetime, timedelta
 from math import ceil
 from ast import literal_eval
 from random import randint
+from humanize import naturaldelta
+from traceback import print_exc
 
 from gi.repository import GObject
 from pydbus import SessionBus
 from emoji import demojize, emojize  # This dependency is 👍
 from emoji.unicode_codes import UNICODE_EMOJI as emojis
+from pickle import dump, load
 
 commandDelimiter = "!"  # What character(s) the commands should start with.
-lastMessageTime = datetime.now()
+now = datetime.now
+lastMessageTime = now()
 
 
 def readFile(path):
-    fileHandle = open(path, mode="r")
-    try:  # Try to read the messageLinks from a text file, if it does not succeed, set it to an empty dict.
-        out = literal_eval(fileHandle.read(-1))  # Read the whole file and evaluate it literally.
-    except SyntaxError:
-        out = None  # Otherwise, assume no links exist.
+    fileHandle = open(path, mode="rb")
+    out = None
+    strFile = fileHandle.read(-1)
+    try:
+        out = literal_eval(strFile)
+    except (SyntaxError, ValueError):
+        pass
+    if out is None and strFile != "":
+        try:
+            fileHandle.seek(0)  # Go back to the beginning of the file
+            out = load(fileHandle)
+        except EOFError:
+            pass
+
     fileHandle.close()  # No need to keep the file handle open unnecessarily.
     return out
 
@@ -33,21 +46,22 @@ readFiles = lambda *paths: [readFile(path) for path in paths]
 
 
 def updateFile(path, value):
-    openFile = open(path, mode="w")  # To update a file
-    openFile.write(str(u"" + value))
+    openFile = open(path, mode="wb")  # To update a file
+    dump(value, openFile)
     openFile.close()
 
 
 # Read files for persistent values.
-messageLinks, puns, aliases = readFiles("messageLinks.txt", "Puns.txt", "Aliases.txt")
+messageLinks, puns, aliases, atGDS = readFiles("messageLinks.txt", "Puns.txt", "Aliases.txt", "atGDS.txt")
 
 messageLinks = messageLinks or {}
 puns = puns or []
 aliases = aliases or {}
+atGDS = atGDS or {}
 
 
 def getPun(punFilter):  # Gets a random pun, or a random pun that satisfies the provided filter.
-    if punFilter is None:
+    if not punFilter:
         return puns[randint(0, len(puns) - 1)]
     validPuns = list(filter(lambda pun: str(punFilter) in str(pun), puns))
     return (validPuns[randint(0, len(validPuns) - 1)]) if len(validPuns) > 0 else (
@@ -58,7 +72,7 @@ def Help(argSet, page=(), *args):  # Returns help text for the given command, or
     iteratableCommands = commands.keys()  # A tuple containing all of the keys in iteratableCommands.
     commandsPerPage = 10  # How many commands to show per page.
     if page and page.lower() in helpText:  # If the help text for a given command was asked for
-        simpleReply(argSet, helpText[args[0].lower()])
+        simpleReply(argSet, helpText[page.lower()])
     elif not page or (page and page.isdigit()):  # If a page number was asked for
         page = int(page) or 1
         helpStr = ""
@@ -68,6 +82,8 @@ def Help(argSet, page=(), *args):  # Returns help text for the given command, or
             helpStr += "\n" + iteratableCommands[i] + ": " + (
                 helpText[iteratableCommands[i]] if iteratableCommands[i] in helpText else "")
         simpleReply(argSet, helpStr)
+    else:
+        simpleReply(argSet, "No command \"{}\" found.".format(page))
 
 
 def Link(argSet, chat, *chats):  # Links chats to chat. Supports partial names.
@@ -79,7 +95,7 @@ def Link(argSet, chat, *chats):  # Links chats to chat. Supports partial names.
         messageLinks[fullChatName] = fullChatNames
     if len(messageLinks[fullChatName]) == 1:
         messageLinks[fullChatName] = messageLinks[fullChatName][0]
-    updateFile("messageLinks.txt", str(messageLinks))
+    ("messageLinks.txt", messageLinks)
     simpleReply(argSet, "{} linked to {}.".format(str(fullChatNames)[1:-1], fullChatName))
 
 
@@ -97,13 +113,13 @@ def Unlink(argSet, chat, *chats):  # Unlinks chats from chat. Supports partial n
             return
         elif isinstance(messageLinks[fullChatName], dict) and fullName in messageLinks[fullChatName]:
             removedChats.append(messageLinks[fullChatName].pop(messageLinks[fullChatName].index(fullName)))
-    updateFile("messageLinks.txt", str(messageLinks))  # Update the messageLinks file.
+    updateFile("messageLinks.txt", messageLinks)  # Update the messageLinks file.
     simpleReply(argSet, "{} unlinked from {}.".format(str(removedChats)[1:-1], fullChatName))
 
 
 def addPun(argSet, pun):  # Adds a pun to the pun list, then updates the file.
     puns.append(str(pun))
-    updateFile("Puns.txt", str(puns))
+    updateFile("Puns.txt", puns)
     simpleReply(argSet, "\"{}\" added to the pun list.".format(pun))
 
 
@@ -111,7 +127,7 @@ def removePun(argSet, pun):  # Removes a pun from the pun list, then updates the
     fullPun = next((fullPun for fullPun in puns if str(pun) in fullPun), None)
     puns.remove(fullPun)
     simpleReply(argSet, "\"{}\" removed from the pun list.".format(fullPun))
-    updateFile("Puns.txt", str(puns))
+    updateFile("Puns.txt", puns)
 
 
 def addAlias(argSet, *_):  # Adds an alias for a command, or replies what an alias runs.
@@ -132,10 +148,10 @@ def addAlias(argSet, *_):  # Adds an alias for a command, or replies what an ali
         return
     aliases[str(command)] = (argsMsg, args)
     simpleReply(argSet, "!{} bound to !{}.".format(command, argsMsg))
-    updateFile("Aliases.txt", str(aliases))
+    updateFile("Aliases.txt", aliases)
 
 
-def removeAlias(argSet, alias=() ,*_):  # Removes an alias to a command.
+def removeAlias(argSet, alias=(), *_):  # Removes an alias to a command.
     if not alias:
         simpleReply(argSet, "Enter an alias to remove!")
         return
@@ -145,7 +161,7 @@ def removeAlias(argSet, alias=() ,*_):  # Removes an alias to a command.
         simpleReply(argSet, "No alias \"{}\" found.".format(alias))
         return
     simpleReply(argSet, "\"{}\" unaliased.".format(alias))
-    updateFile("Aliases.txt", str(aliases))
+    updateFile("Aliases.txt", aliases)
 
 
 def getFullUsername(argSet, partialName):  # Returns a user's alias given their partial name.
@@ -197,12 +213,32 @@ def Mimic(argSet, user=None, firstWordOfCmd=None, *_):  # Runs a command as a di
         simpleReply(argSet, "That's not a command!")
 
 
+def gds(argSet, *_):
+    atGDS[purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2]))] = now()
+    simpleReply(argSet, "{} is going to GDS.".format(purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2]))))
+    updateFile("atGDS.txt", atGDS)
+
+def leftGds(argSet, *_):
+    atGDS[purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2]))] = now() - timedelta(hours=2)
+    simpleReply(argSet, "{} left GDS.".format(purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2]))))
+    updateFile("atGDS.txt", atGDS)
+
+
+def atGds(argSet, *_):
+    GDS = [name for name in atGDS.keys() if now() - atGDS[name] < timedelta(hours=1)]
+    strPeopleAtGDS = u"".join([u"{} went to GDS {} ago. ".format(n, naturaldelta(now() - atGDS[n])) for n in GDS])
+    if GDS:
+        simpleReply(argSet, strPeopleAtGDS)
+    else:
+        simpleReply(argSet, "No one went to GDS in the last hour.")
+
+
 commands = {  # A dict containing the functions to run when a given command is entered.
     "help": Help,
     "ping": lambda argSet, *_: simpleReply(argSet, "Pong!"),
     "chats": lambda argSet, *_: simpleReply(argSet, str(
         [str(purple.PurpleConversationGetTitle(conv)) + " (" + str(conv) + ")" for conv
-            inpurple.PurpleGetConversations()])[1:-1]),
+            in purple.PurpleGetConversations()])[1:-1]),
     "args": lambda argSet, *_: simpleReply(argSet, str(argSet)),
     "echo": lambda argSet, *_: simpleReply(argSet, argSet[2][argSet[2].find("echo") + 4 + len(commandDelimiter):]),
     "exit": lambda *_: sys.exit(0),
@@ -227,7 +263,10 @@ commands = {  # A dict containing the functions to run when a given command is e
     "mimic": Mimic,
     "users": lambda argSet, *_: simpleReply(argSet, str(
         [purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(argSet[0], purple.PurpleConvChatCbGetName(user))) for user in
-            purple.PurpleConvChatGetUsers(purple.PurpleConvChat(argSet[3]))][:-1]))
+            purple.PurpleConvChatGetUsers(purple.PurpleConvChat(argSet[3]))][:-1])),
+    "gds": gds,
+    "atgds": atGds,
+    "leftgds": leftGds
 }
 
 helpText = {  # The help text for each command.
@@ -251,7 +290,10 @@ helpText = {  # The help text for each command.
     "botme": "Replies \"*(bot's name) (message)\", e.g. \"*NickBot died.\"",
     "randomemoji": "Replies with the specified number of random emojis.",
     "mimic": "Runs the specified command as if it was run by the specified user.",
-    "users": "Lists all of the users in the current chat."
+    "users": "Lists all of the users in the current chat.",
+    "gds": "Tells the chat you've gone to GDS.",
+    "atgds": "Replies with who's said they're at GDS within the last hour.",
+    "leftgds": "Tells the chat you've left GDS."
 }
 
 
@@ -274,8 +316,8 @@ getConvByName = lambda name: next(
     (i for i in purple.PurpleGetConversations() if purple.PurpleConversationGetTitle(i) == name), None)
 
 logFile = open("Pidgin_Crossover_Messages.log", mode="a")
-logStr = lambda string: logFile.write(
-    str(u"[{}] ".format(datetime.now().isoformat())) + demojize(string).decode("utf-8", errors="remove"))
+# Writes a string to the log file.
+logStr = lambda string: logFile.write(str(u"[{}] ".format(now().isoformat())) + demojize(string))
 
 log = lambda string: [fct(string + "\n") for fct in (print, logStr)]  # Prints and writes to the log file.
 
@@ -316,11 +358,11 @@ def messageListener(account, sender, message, conversation, flags):
     global lastMessageTime
     if purple.PurpleAccountGetUsername(account) == sender:
         return
-    elif datetime.now() - lastMessageTime < timedelta(seconds=.1):
+    elif now() - lastMessageTime < timedelta(seconds=.1):
         print("Overflow!", account, sender, message, conversation, flags)  # Debug stuff
-        lastMessageTime = datetime.now()
+        lastMessageTime = now()
         return
-    lastMessageTime = datetime.now()
+    lastMessageTime = now()
     # Strip HTML from Hangouts messages.
     message = purple.PurpleMarkupStripHtml(message) if message.startswith("<html>") else message
 
@@ -358,7 +400,7 @@ def messageListener(account, sender, message, conversation, flags):
 
 
 bus = SessionBus()  # Initialize the DBus interface
-purple = bus.get("im.pidgin.purple.PurpleService", "/im/pidgin/purple/PurpleObject")  # Interface with libpurple client.
+purple = bus.get("im.pidgin.purple.PurpleService", "/im/pidgin/purple/PurpleObject")  # Connect to libpurple clients.
 # Surprisingly, im.pidgin.* and im/pidgin/* work for Finch too. Not sure why.
 
 # Run the message listener for IMs and Chats.
