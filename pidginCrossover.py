@@ -10,7 +10,6 @@ from math import ceil
 from ast import literal_eval
 from random import randint
 from humanize import naturaldelta
-from traceback import print_exc
 
 from gi.repository import GObject
 from pydbus import SessionBus
@@ -21,6 +20,7 @@ from pickle import dump, load
 commandDelimiter = "!"  # What character(s) the commands should start with.
 now = datetime.now
 lastMessageTime = now()
+chats=[]
 
 
 def readFile(path):
@@ -68,7 +68,7 @@ def getPun(punFilter):  # Gets a random pun, or a random pun that satisfies the 
         "Does not punpute! Random Pun: " + puns[randint(0, len(puns) - 1)])
 
 
-def Help(argSet, page=(), *args):  # Returns help text for the given command, or a page listing all commands.
+def Help(argSet, page=(), *_):  # Returns help text for the given command, or a page listing all commands.
     iteratableCommands = commands.keys()  # A tuple containing all of the keys in iteratableCommands.
     commandsPerPage = 10  # How many commands to show per page.
     if page and page.lower() in helpText:  # If the help text for a given command was asked for
@@ -95,7 +95,7 @@ def Link(argSet, chat, *chats):  # Links chats to chat. Supports partial names.
         messageLinks[fullChatName] = fullChatNames
     if len(messageLinks[fullChatName]) == 1:
         messageLinks[fullChatName] = messageLinks[fullChatName][0]
-    ("messageLinks.txt", messageLinks)
+    updateFile("messageLinks.txt", messageLinks)
     simpleReply(argSet, "{} linked to {}.".format(str(fullChatNames)[1:-1], fullChatName))
 
 
@@ -189,7 +189,6 @@ def runCommand(argSet, command, *args):  # Runs the command given the argSet and
         command = message[len(commandDelimiter):message.find(" ")+1 if " " in message else len(message)].lower()
         message = message[:message.lower().find(command)] + command + message[
         message.lower().find(command) + len(command):]
-        print(message,argSet[2],command)
         newMsg = message.replace(command, aliases[command][0]).replace("%sendername", purple.PurpleBuddyGetAlias(
             purple.PurpleFindBuddy(*argSet[:2]))).replace("%botname", purple.PurpleAccountGetAlias(argSet[0])).replace(
             "%chattitle", purple.PurpleConversationGetTitle(argSet[3])).replace("%chatname",
@@ -355,7 +354,9 @@ isListButNotString = lambda obj: isinstance(obj, (list, tuple, set)) and not isi
 
 
 def messageListener(account, sender, message, conversation, flags):
-    purple.PurpleConversationClearMessageHistory(conversation)  # Don't keep history
+    newChats=purple.PurpleGetConversations()
+    if newChats==chats: # If the chat was not just initialized
+        purple.PurpleConversationClearMessageHistory(conversation)  # Don't keep history
     global lastMessageTime
     if purple.PurpleAccountGetUsername(account) == sender:
         return
@@ -407,5 +408,7 @@ purple = bus.get("im.pidgin.purple.PurpleService", "/im/pidgin/purple/PurpleObje
 # Run the message listener for IMs and Chats.
 purple.ReceivedImMsg.connect(messageListener)
 purple.ReceivedChatMsg.connect(messageListener)
+
+purple.PurpleConversationsInit()
 
 GObject.MainLoop().run()
