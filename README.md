@@ -17,6 +17,8 @@ Dependencies:
 
 -PyDBus (pip install pydbus)
 
+-huamnize (pip install humanize)
+
 -Pidgin or Finch (sudo apt-get install pidgin or sudo apt-get install finch)
 
 
