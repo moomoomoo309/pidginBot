@@ -20,7 +20,6 @@ from pickle import dump, load
 commandDelimiter = "!"  # What character(s) the commands should start with.
 now = datetime.now
 lastMessageTime = now()
-chats=[]
 
 
 def readFile(path):
@@ -131,23 +130,29 @@ def removePun(argSet, pun):  # Removes a pun from the pun list, then updates the
 
 
 def addAlias(argSet, *_):  # Adds an alias for a command, or replies what an alias runs.
-    message = argSet[2][8:]
+    message = argSet[2][7 + len(commandDelimiter):]
     if message == "":
         return
-    command = message[:message.find(" ") or -0]
-    argsMsg = message[message.find(" ") + len(commandDelimiter):]
+    command = message[:message.find(" ")] if " " in message else message
+    argsMsg = message[message.find(" ") + 1 + len(commandDelimiter):]
     args = [str(arg) for arg in argsMsg.split(" ")]
-    if argsMsg.count(" ") == 0:
-        if str(argsMsg) not in aliases:
-            simpleReply(argSet, "No command \"{}\" found.".format(str(argsMsg)))
+    if " " not in message:
+        if str(command) not in aliases:
+            simpleReply(argSet, "No alias \"{}\" found.".format(str(command)))
             return
-        simpleReply(argSet, "!" + aliases[str(argsMsg)][0])
+        simpleReply(argSet, '"' + commandDelimiter + aliases[str(command)][0] + '"')
         return
-    if str(command) in aliases:
-        simpleReply(argSet, "You cannot add an alias to an existing command!")
+    if str(command) in commands:
+        simpleReply(argSet, "That name is already used by a command!")
+        return
+    elif str(command) in aliases:
+        simpleReply(argSet, "That alias already exists!")
         return
     aliases[str(command)] = (argsMsg, args)
-    simpleReply(argSet, "!{} bound to !{}.".format(command, argsMsg))
+    for i in aliases.keys():
+        if " " in i:
+            aliases.pop(i)
+    simpleReply(argSet, "{} bound to {}.".format(commandDelimiter + command, commandDelimiter + argsMsg))
     updateFile("Aliases.txt", aliases)
 
 
@@ -186,7 +191,7 @@ def runCommand(argSet, command, *args):  # Runs the command given the argSet and
         return True
     elif command in aliases:
         message = argSet[2]
-        command = message[len(commandDelimiter):message.find(" ")+1 if " " in message else len(message)].lower()
+        command = message[len(commandDelimiter):message.find(" ") if " " in message else len(message)].lower()
         message = message[:message.lower().find(command)] + command + message[
         message.lower().find(command) + len(command):]
         newMsg = message.replace(command, aliases[command][0]).replace("%sendername", purple.PurpleBuddyGetAlias(
@@ -218,6 +223,7 @@ def gds(argSet, *_):
     simpleReply(argSet, "{} is going to GDS.".format(purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2]))))
     updateFile("atGDS.txt", atGDS)
 
+
 def leftGds(argSet, *_):
     atGDS[purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2]))] = now() - timedelta(hours=2)
     simpleReply(argSet, "{} left GDS.".format(purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2]))))
@@ -231,6 +237,24 @@ def atGds(argSet, *_):
         simpleReply(argSet, strPeopleAtGDS)
     else:
         simpleReply(argSet, "No one went to GDS in the last hour.")
+
+
+dice = [u"0⃣", u"1⃣", u"2⃣", u"3⃣", u"4⃣", u"5⃣", u"6⃣", u"7⃣", u"8⃣", u"9⃣️⃣️"]
+
+
+def diceRoll(argSet, diceStr="", *_):
+    def diceify(s):
+        for i in range(10):
+            s = s.replace(u"" + str(i), dice[i])
+        return s
+
+    numDice, numSides = 1, 6
+    if "d" in diceStr.lower():
+        numDice, numSides = int(diceStr[:diceStr.lower().find("d")]), int(diceStr[diceStr.lower().find("d") + 1:])
+    rolls = [randint(1, numSides) for _ in range(numDice)]
+    simpleReply(argSet,
+        diceify(u"".join(str(s) + ", " for s in rolls) + u"Sum={}, Max={}, Min={}".format(sum(rolls), max(rolls),
+            min(rolls))))
 
 
 commands = {  # A dict containing the functions to run when a given command is entered.
@@ -261,12 +285,13 @@ commands = {  # A dict containing the functions to run when a given command is e
     "randomemoji": lambda argSet, amt=1, *_: simpleReply(argSet, u"".join(
         [emojis.values()[randint(0, len(emojis) - 1)] for _ in range(int(amt) or 1)])),
     "mimic": Mimic,
-    "users": lambda argSet, *_: simpleReply(argSet, str(
+    "users": lambda argSet, *_: simpleReply(argSet, emojize(str(
         [purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(argSet[0], purple.PurpleConvChatCbGetName(user))) for user in
-            purple.PurpleConvChatGetUsers(purple.PurpleConvChat(argSet[3]))][:-1])),
+            purple.PurpleConvChatGetUsers(purple.PurpleConvChat(argSet[3]))][:-1]), use_aliases=True)),
     "gds": gds,
     "atgds": atGds,
-    "leftgds": leftGds
+    "leftgds": leftGds,
+    "diceroll": diceRoll,
 }
 
 helpText = {  # The help text for each command.
@@ -327,7 +352,7 @@ def sendMessage(sending, receiving, nick, message):  # Sends a message on the gi
         return
 
     if message[0:len(commandDelimiter)] == commandDelimiter:  # Do not send out commands! No! Bad!
-        message = (" " if commandDelimiter[0] != " " else "_") + message
+        message = ("_" if commandDelimiter[0] != "_" else "__") + message
 
     # Actually send the messages out.
     if purple.PurpleConversationGetType(receiving) == 2:  # 2 means a group chat.
@@ -340,13 +365,16 @@ def sendMessage(sending, receiving, nick, message):  # Sends a message on the gi
     # I could put this behind debug, but I choose not to. It's pretty enough.
     sendTitle = purple.PurpleConversationGetTitle(sending)
     receiveTitle = purple.PurpleConversationGetTitle(receiving)
-    log(demojize(
-        u"Sent \"{}\" from {} ({}) to {} ({}).".format((nick + ": " + message if nick else message),
-            sendTitle, sending, receiveTitle,
-            conv)))  # Sent "message" from chat 1 (chat ID) to chat 2 (chat ID).
-    # Removes emojis from messages, not all consoles support emoji, and not all files can have emojis written to them.
+    try:  # Logging errors should not break things.
+        log(demojize(
+            u"Sent \"{}\" from {} ({}) to {} ({}).".format((nick + ": " + message if nick else message),
+                sendTitle, sending, receiveTitle,
+                conv)))  # Sent "message" from chat 1 (chat ID) to chat 2 (chat ID).
+        # Removes emojis from messages, not all consoles support emoji, and not all files like emojis written to them.
 
-    logFile.flush()  # Update the log since it's been written to.
+        logFile.flush()  # Update the log since it's been written to.
+    except UnicodeError:
+        pass
 
 
 # Returns what it says on the tin.
@@ -354,9 +382,7 @@ isListButNotString = lambda obj: isinstance(obj, (list, tuple, set)) and not isi
 
 
 def messageListener(account, sender, message, conversation, flags):
-    newChats=purple.PurpleGetConversations()
-    if newChats==chats: # If the chat was not just initialized
-        purple.PurpleConversationClearMessageHistory(conversation)  # Don't keep history
+    #    purple.PurpleConversationClearMessageHistory(conversation)  # Don't keep history
     global lastMessageTime
     if purple.PurpleAccountGetUsername(account) == sender:
         return
