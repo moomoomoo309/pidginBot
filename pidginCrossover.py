@@ -15,7 +15,8 @@ from gi.repository import GObject
 from pydbus import SessionBus
 from emoji import demojize, emojize  # This dependency is 👍
 from emoji.unicode_codes import UNICODE_EMOJI as emojis
-from json import dump, load
+from jsondatetime import loads
+from json import dumps
 
 commandDelimiter = "!"  # What character(s) the commands should start with.
 now = datetime.now
@@ -32,9 +33,8 @@ def readFile(path):
         pass
     if out is None and strFile != "":
         try:
-            fileHandle.seek(0)  # Go back to the beginning of the file
             print(path)
-            out = load(fileHandle)
+            out = loads(strFile)
         except EOFError:
             pass
 
@@ -45,14 +45,19 @@ def readFile(path):
 readFiles = lambda *paths: [readFile(path) for path in paths]
 
 
+def myconverter(o):
+    if isinstance(o, datetime):
+        return o.__str__()
+
+
 def updateFile(path, value):
     openFile = open(path, mode="w")  # To update a file
-    dump(value, openFile)
+    openFile.write(dumps(value, openFile, indent=4, default=myconverter))
     openFile.close()
 
 
 # Read files for persistent values.
-messageLinks, puns, aliases, atGDS = readFiles("messageLinks.txt", "Puns.txt", "Aliases.txt", "atGDS.txt")
+messageLinks, puns, aliases, atGDS = readFiles("messageLinks.json", "Puns.json", "Aliases.json", "atGDS.json")
 
 messageLinks = messageLinks or {}
 puns = puns or []
@@ -71,8 +76,9 @@ def getPun(punFilter):  # Gets a random pun, or a random pun that satisfies the 
 def Help(argSet, page=(), *_):  # Returns help text for the given command, or a page listing all commands.
     iteratableCommands = commands.keys()  # A tuple containing all of the keys in iteratableCommands.
     commandsPerPage = 10  # How many commands to show per page.
-    if page and page.lower() in helpText:  # If the help text for a given command was asked for
-        simpleReply(argSet, helpText[page.lower()])
+    cmd=page[len(commandDelimiter):]
+    if cmd and cmd.lower() in helpText:  # If the help text for a given command was asked for
+        simpleReply(argSet, helpText[cmd.lower()])
     elif not page or (page and page.isdigit()):  # If a page number was asked for
         page = int(page) or 1
         helpStr = ""
@@ -95,8 +101,8 @@ def Link(argSet, chat, *chats):  # Links chats to chat. Supports partial names.
         messageLinks[fullChatName] = fullChatNames
     if len(messageLinks[fullChatName]) == 1:
         messageLinks[fullChatName] = messageLinks[fullChatName][0]
-    updateFile("messageLinks.txt", messageLinks)
-    simpleReply(argSet, "{} linked to {}.".format(str(fullChatNames)[1:-1], fullChatName))
+    updateFile("messageLinks.json", messageLinks)
+    simpleReply(argSet, u"{} linked to {}.".format(str(fullChatNames)[1:-1], fullChatName))
 
 
 def Unlink(argSet, chat, *chats):  # Unlinks chats from chat. Supports partial names.
@@ -113,13 +119,13 @@ def Unlink(argSet, chat, *chats):  # Unlinks chats from chat. Supports partial n
             return
         elif isinstance(messageLinks[fullChatName], dict) and fullName in messageLinks[fullChatName]:
             removedChats.append(messageLinks[fullChatName].pop(messageLinks[fullChatName].index(fullName)))
-    updateFile("messageLinks.txt", messageLinks)  # Update the messageLinks file.
+    updateFile("messageLinks.json", messageLinks)  # Update the messageLinks file.
     simpleReply(argSet, "{} unlinked from {}.".format(str(removedChats)[1:-1], fullChatName))
 
 
 def addPun(argSet, pun):  # Adds a pun to the pun list, then updates the file.
     puns.append(str(pun))
-    updateFile("Puns.txt", puns)
+    updateFile("Puns.json", puns)
     simpleReply(argSet, "\"{}\" added to the pun list.".format(pun))
 
 
@@ -127,7 +133,7 @@ def removePun(argSet, pun):  # Removes a pun from the pun list, then updates the
     fullPun = next((fullPun for fullPun in puns if str(pun) in fullPun), None)
     puns.remove(fullPun)
     simpleReply(argSet, "\"{}\" removed from the pun list.".format(fullPun))
-    updateFile("Puns.txt", puns)
+    updateFile("Puns.json", puns)
 
 
 def addAlias(argSet, *_):  # Adds an alias for a command, or replies what an alias runs.
@@ -154,7 +160,7 @@ def addAlias(argSet, *_):  # Adds an alias for a command, or replies what an ali
         if " " in i:
             aliases.pop(i)
     simpleReply(argSet, "{} bound to {}.".format(commandDelimiter + command, commandDelimiter + argsMsg))
-    updateFile("Aliases.txt", aliases)
+    updateFile("Aliases.json", aliases)
 
 
 def removeAlias(argSet, alias=(), *_):  # Removes an alias to a command.
@@ -167,7 +173,7 @@ def removeAlias(argSet, alias=(), *_):  # Removes an alias to a command.
         simpleReply(argSet, "No alias \"{}\" found.".format(alias))
         return
     simpleReply(argSet, "\"{}\" unaliased.".format(alias))
-    updateFile("Aliases.txt", aliases)
+    updateFile("Aliases.json", aliases)
 
 
 def getFullUsername(argSet, partialName):  # Returns a user's alias given their partial name.
@@ -222,13 +228,13 @@ def Mimic(argSet, user=None, firstWordOfCmd=None, *_):  # Runs a command as a di
 def gds(argSet, *_):
     atGDS[purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2]))] = now()
     simpleReply(argSet, "{} is going to GDS.".format(purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2]))))
-    updateFile("atGDS.txt", atGDS)
+    updateFile("atGDS.json", atGDS)
 
 
 def leftGds(argSet, *_):
     atGDS[purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2]))] = now() - timedelta(hours=2)
     simpleReply(argSet, "{} left GDS.".format(purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2]))))
-    updateFile("atGDS.txt", atGDS)
+    updateFile("atGDS.json", atGDS)
 
 
 def atGds(argSet, *_):
@@ -314,14 +320,15 @@ helpText = {  # The help text for each command.
     "unalias": "Unlinks a name from a command.",
     "aliases": "Lists all of the aliases.",
     "removepun": "Removes a pun from the list of puns.",
-    "me": "Replies \"*(username) (message)\", e.g. \"*Slim Gsus died.\"",
-    "botme": "Replies \"*(bot's name) (message)\", e.g. \"*NickBot died.\"",
+    "me": "Replies \"*(username) (message)\", e.g. \"*Gian Laput is French.\"",
+    "botme": "Replies \"*(bot's name) (message)\", e.g. \"*NickBot DeLello died.\"",
     "randomemoji": "Replies with the specified number of random emojis.",
     "mimic": "Runs the specified command as if it was run by the specified user.",
     "users": "Lists all of the users in the current chat.",
     "gds": "Tells the chat you've gone to GDS.",
     "atgds": "Replies with who's said they're at GDS within the last hour.",
-    "leftgds": "Tells the chat you've left GDS."
+    "leftgds": "Tells the chat you've left GDS.",
+    "diceroll": "Rolls the specified number of dice, returning the min, max, and sum of the dice rolls. 1d6 by default."
 }
 
 
