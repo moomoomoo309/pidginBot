@@ -15,7 +15,7 @@ from gi.repository import GObject
 from pydbus import SessionBus
 from emoji import demojize, emojize  # This dependency is 👍
 from emoji.unicode_codes import UNICODE_EMOJI as emojis
-from pickle import dump, load
+from json import dump, load
 
 commandDelimiter = "!"  # What character(s) the commands should start with.
 now = datetime.now
@@ -23,7 +23,7 @@ lastMessageTime = now()
 
 
 def readFile(path):
-    fileHandle = open(path, mode="rb")
+    fileHandle = open(path, mode="r")
     out = None
     strFile = fileHandle.read(-1)
     try:
@@ -33,6 +33,7 @@ def readFile(path):
     if out is None and strFile != "":
         try:
             fileHandle.seek(0)  # Go back to the beginning of the file
+            print(path)
             out = load(fileHandle)
         except EOFError:
             pass
@@ -45,7 +46,7 @@ readFiles = lambda *paths: [readFile(path) for path in paths]
 
 
 def updateFile(path, value):
-    openFile = open(path, mode="wb")  # To update a file
+    openFile = open(path, mode="w")  # To update a file
     dump(value, openFile)
     openFile.close()
 
@@ -242,15 +243,17 @@ def atGds(argSet, *_):
 dice = [u"0⃣", u"1⃣", u"2⃣", u"3⃣", u"4⃣", u"5⃣", u"6⃣", u"7⃣", u"8⃣", u"9⃣️⃣️"]
 
 
-def diceRoll(argSet, diceStr="", *_): # Returns a dice roll of the given dice.
-    def diceify(s): # Replaces numbers with emojis
-        for i in range(10):
+def diceRoll(argSet, diceStr="", *_):  # Returns a dice roll of the given dice.
+    def diceify(s):  # Replaces numbers with emojis
+        for i in range(len(dice)):
             s = s.replace(u"" + str(i), dice[i])
         return s
 
     numDice, numSides = 1, 6
     if "d" in diceStr.lower():
         numDice, numSides = int(diceStr[:diceStr.lower().find("d")]), int(diceStr[diceStr.lower().find("d") + 1:])
+    elif diceStr.isdigit():
+        numDice = int(diceStr)
     rolls = [randint(1, numSides) for _ in range(numDice)]
     simpleReply(argSet,
         diceify(u"".join(str(s) + ", " for s in rolls) + u"Sum={}, Max={}, Min={}".format(sum(rolls), max(rolls),
