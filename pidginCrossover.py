@@ -242,7 +242,7 @@ def atGds(argSet, *_):
 dice = [u"0⃣", u"1⃣", u"2⃣", u"3⃣", u"4⃣", u"5⃣", u"6⃣", u"7⃣", u"8⃣", u"9⃣️⃣️"]
 
 
-def diceRoll(argSet, diceStr="", *_):
+def diceRoll(argSet, diceStr="", *_): # Returns a dice roll of the given dice.
     def diceify(s):
         for i in range(10):
             s = s.replace(u"" + str(i), dice[i])
