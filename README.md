@@ -9,7 +9,7 @@ It can run on any linux-based system that supports libpurple.
 
 Dependencies:
 
--Python 2.7 (May run on older versions of python? Is not Python 3 compatible due to Unicode shenanigans)
+-Python 2.7/3.4 (May run on 3.5 or older versions, not tested)
 
 -PyGObject (pip install pygobject)
 
