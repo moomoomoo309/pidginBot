@@ -15,12 +15,37 @@ from gi.repository import GObject
 from pydbus import SessionBus
 from emoji import demojize, emojize  # This dependency is 👍
 from emoji.unicode_codes import UNICODE_EMOJI as emojis
-from jsondatetime import loads
 from json import dumps
+from json import loads as loads_json
 
 commandDelimiter = "!"  # What character(s) the commands should start with.
 now = datetime.now
 lastMessageTime = now()
+
+#JSON-datetime
+def loads(s, **kwargs):
+
+    format = kwargs.pop("datetime_format", None) or '%a, %d %b %Y %H:%M:%S UTC'
+    source = loads_json(s, **kwargs)
+
+    return iteritems(source, format)
+
+def iteritems(source, format):
+
+    for k, v in source.items():
+        if isinstance(v, list):
+            for a in v:
+                iteritems(a, format)
+        elif isinstance(v, dict):
+            iteritems(v, format)
+        elif isinstance(v, (str, unicode)):
+            try:
+                source[k] = datetime.datetime.strptime(v, format)
+            except:
+                pass
+
+    return source
+#end JSON-datetime
 
 
 def readFile(path):
@@ -45,14 +70,9 @@ def readFile(path):
 readFiles = lambda *paths: [readFile(path) for path in paths]
 
 
-def myconverter(o):
-    if isinstance(o, datetime):
-        return o.__str__()
-
-
 def updateFile(path, value):
     openFile = open(path, mode="w")  # To update a file
-    openFile.write(dumps(value, openFile, indent=4, default=myconverter))
+    openFile.write(dumps(value, openFile, indent=4, default=lambda o: o.__str__() if isinstance(o,datetime) else None))
     openFile.close()
 
 
@@ -76,7 +96,7 @@ def getPun(punFilter):  # Gets a random pun, or a random pun that satisfies the 
 def Help(argSet, page=(), *_):  # Returns help text for the given command, or a page listing all commands.
     iteratableCommands = commands.keys()  # A tuple containing all of the keys in iteratableCommands.
     commandsPerPage = 10  # How many commands to show per page.
-    cmd=page[len(commandDelimiter):]
+    cmd = page[len(commandDelimiter):]
     if cmd and cmd.lower() in helpText:  # If the help text for a given command was asked for
         simpleReply(argSet, helpText[cmd.lower()])
     elif not page or (page and page.isdigit()):  # If a page number was asked for
@@ -143,8 +163,8 @@ def addAlias(argSet, *_):  # Adds an alias for a command, or replies what an ali
     command = message[:message.find(" ")] if " " in message else message
     argsMsg = message[message.find(" ") + 1 + len(commandDelimiter):]
     args = [str(arg) for arg in argsMsg.split(" ")]
-    if " " not in message:
-        if str(command) not in aliases:
+    if " " not in message:  # If the user is asking for the command run by a specific alias.
+        if str(command) not in aliases:  # If the alias asked for does not exist.
             simpleReply(argSet, "No alias \"{}\" found.".format(str(command)))
             return
         simpleReply(argSet, '"' + commandDelimiter + aliases[str(command)][0] + '"')
@@ -156,10 +176,7 @@ def addAlias(argSet, *_):  # Adds an alias for a command, or replies what an ali
         simpleReply(argSet, "That alias already exists!")
         return
     aliases[str(command)] = (argsMsg, args)
-    for i in aliases.keys():
-        if " " in i:
-            aliases.pop(i)
-    simpleReply(argSet, "{} bound to {}.".format(commandDelimiter + command, commandDelimiter + argsMsg))
+    simpleReply(argSet, "\"{}\" bound to \"{}\".".format(commandDelimiter + command, commandDelimiter + argsMsg))
     updateFile("Aliases.json", aliases)
 
 
@@ -226,27 +243,30 @@ def Mimic(argSet, user=None, firstWordOfCmd=None, *_):  # Runs a command as a di
 
 
 def gds(argSet, *_):
-    atGDS[purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2]))] = now()
+    atGDS[purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2]))] = now() # Update the last visit time
     simpleReply(argSet, "{} is going to GDS.".format(purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2]))))
     updateFile("atGDS.json", atGDS)
 
 
 def leftGds(argSet, *_):
+    # Specify the last visit time as now minus two hours, an hour longer than atGds will show.
     atGDS[purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2]))] = now() - timedelta(hours=2)
     simpleReply(argSet, "{} left GDS.".format(purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2]))))
     updateFile("atGDS.json", atGDS)
 
 
 def atGds(argSet, *_):
+    # Filter out people who have been to GDS in the last hour
     GDS = [name for name in atGDS.keys() if now() - atGDS[name] < timedelta(hours=1)]
+    # Write the names to a string.
     strPeopleAtGDS = u"".join([u"{} went to GDS {} ago. ".format(n, naturaldelta(now() - atGDS[n])) for n in GDS])
     if GDS:
         simpleReply(argSet, strPeopleAtGDS)
-    else:
+    else: # If no one has been to GDS
         simpleReply(argSet, "No one went to GDS in the last hour.")
 
 
-dice = [u"0⃣", u"1⃣", u"2⃣", u"3⃣", u"4⃣", u"5⃣", u"6⃣", u"7⃣", u"8⃣", u"9⃣️⃣️"]
+dice = [u"0⃣", u"1⃣", u"2⃣", u"3⃣", u"4⃣", u"5⃣", u"6⃣", u"7⃣", u"8⃣", u"9⃣️⃣️"] # 1-9 in emoji form
 
 
 def diceRoll(argSet, diceStr="", *_):  # Returns a dice roll of the given dice.
@@ -255,12 +275,12 @@ def diceRoll(argSet, diceStr="", *_):  # Returns a dice roll of the given dice.
             s = s.replace(u"" + str(i), dice[i])
         return s
 
-    numDice, numSides = 1, 6
+    numDice, numSides = 1, 6 # Defaults to 1d6
     if "d" in diceStr.lower():
         numDice, numSides = int(diceStr[:diceStr.lower().find("d")]), int(diceStr[diceStr.lower().find("d") + 1:])
     elif diceStr.isdigit():
         numDice = int(diceStr)
-    rolls = [randint(1, numSides) for _ in range(numDice)]
+    rolls = [randint(1, numSides) for _ in range(numDice)] # Roll the dice
     simpleReply(argSet,
         diceify(u"".join(str(s) + ", " for s in rolls) + u"Sum={}, Max={}, Min={}".format(sum(rolls), max(rolls),
             min(rolls))))
@@ -392,7 +412,6 @@ isListButNotString = lambda obj: isinstance(obj, (list, tuple, set)) and not isi
 
 
 def messageListener(account, sender, message, conversation, flags):
-    #    purple.PurpleConversationClearMessageHistory(conversation)  # Don't keep history
     global lastMessageTime
     if purple.PurpleAccountGetUsername(account) == sender:
         return
@@ -402,12 +421,12 @@ def messageListener(account, sender, message, conversation, flags):
         return
     lastMessageTime = now()
     # Strip HTML from Hangouts messages.
-    message = purple.PurpleMarkupStripHtml(message) if message.startswith("<html>") else message
+    message = purple.PurpleMarkupStripHtml(message) if message.startswith("<") else message
 
     nick = purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(account, sender))
     # Logs messages. Logging errors will not prevent commands from working.
     try:
-        logStr(u"{}: {}".format(nick, (u"" + message)))
+        logStr(u"{}: {}".format(nick, (u"" + str(message))))
         logFile.flush()
     except UnicodeError:
         pass
