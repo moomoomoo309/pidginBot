@@ -7,7 +7,7 @@ from __future__ import print_function
 import sys
 from datetime import datetime, timedelta
 from math import ceil
-from ast import literal_eval
+# from ast import literal_eval
 from random import randint
 from humanize import naturaldelta
 
@@ -15,50 +15,23 @@ from gi.repository import GObject
 from pydbus import SessionBus
 from emoji import demojize, emojize  # This dependency is 👍
 from emoji.unicode_codes import UNICODE_EMOJI as emojis
-from json import dumps
-from json import loads as loads_json
+from json import dumps, loads
 
 commandDelimiter = "!"  # What character(s) the commands should start with.
 now = datetime.now
 lastMessageTime = now()
-
-#JSON-datetime
-def loads(s, **kwargs):
-
-    format = kwargs.pop("datetime_format", None) or '%a, %d %b %Y %H:%M:%S UTC'
-    source = loads_json(s, **kwargs)
-
-    return iteritems(source, format)
-
-def iteritems(source, format):
-
-    for k, v in source.items():
-        if isinstance(v, list):
-            for a in v:
-                iteritems(a, format)
-        elif isinstance(v, dict):
-            iteritems(v, format)
-        elif isinstance(v, (str, unicode)):
-            try:
-                source[k] = datetime.datetime.strptime(v, format)
-            except:
-                pass
-
-    return source
-#end JSON-datetime
 
 
 def readFile(path):
     fileHandle = open(path, mode="r")
     out = None
     strFile = fileHandle.read(-1)
-    try:
-        out = literal_eval(strFile)
-    except (SyntaxError, ValueError):
-        pass
+    #    try:
+    #        out = literal_eval(strFile)
+    #    except (SyntaxError, ValueError):
+    #        pass
     if out is None and strFile != "":
         try:
-            print(path)
             out = loads(strFile)
         except EOFError:
             pass
@@ -72,7 +45,8 @@ readFiles = lambda *paths: [readFile(path) for path in paths]
 
 def updateFile(path, value):
     openFile = open(path, mode="w")  # To update a file
-    openFile.write(dumps(value, openFile, indent=4, default=lambda o: o.__str__() if isinstance(o,datetime) else None))
+    openFile.write(dumps(value, openFile, indent=4,
+        default=lambda o: o.strftime('%a, %d %b %Y %H:%M:%S UTC') if isinstance(o, datetime) else None))
     openFile.close()
 
 
@@ -221,7 +195,8 @@ def runCommand(argSet, command, *args):  # Runs the command given the argSet and
         newMsg = message.replace(command, aliases[command][0]).replace("%sendername", purple.PurpleBuddyGetAlias(
             purple.PurpleFindBuddy(*argSet[:2]))).replace("%botname", purple.PurpleAccountGetAlias(argSet[0])).replace(
             "%chattitle", purple.PurpleConversationGetTitle(argSet[3])).replace("%chatname",
-            purple.PurpleConversationGetName(argSet[3]))  # Adds a few variables you can put into aliases
+            purple.PurpleConversationGetName(argSet[3])).replace("%serveralias", purple.PurpleBuddyGetServerAlias(
+            purple.PurpleFindBuddy(*argSet[:2])))  # Adds a few variables you can put into aliases
         commands[aliases[command][1][0]]((argSet[0], argSet[1], newMsg, argSet[3], argSet[4]), *(
             tuple(args) + tuple(aliases[command][1][len(commandDelimiter):])))  # Run the alias's command
         return True
@@ -243,7 +218,7 @@ def Mimic(argSet, user=None, firstWordOfCmd=None, *_):  # Runs a command as a di
 
 
 def gds(argSet, *_):
-    atGDS[purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2]))] = now() # Update the last visit time
+    atGDS[purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2]))] = now()  # Update the last visit time
     simpleReply(argSet, "{} is going to GDS.".format(purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2]))))
     updateFile("atGDS.json", atGDS)
 
@@ -262,11 +237,11 @@ def atGds(argSet, *_):
     strPeopleAtGDS = u"".join([u"{} went to GDS {} ago. ".format(n, naturaldelta(now() - atGDS[n])) for n in GDS])
     if GDS:
         simpleReply(argSet, strPeopleAtGDS)
-    else: # If no one has been to GDS
+    else:  # If no one has been to GDS
         simpleReply(argSet, "No one went to GDS in the last hour.")
 
 
-dice = [u"0⃣", u"1⃣", u"2⃣", u"3⃣", u"4⃣", u"5⃣", u"6⃣", u"7⃣", u"8⃣", u"9⃣️⃣️"] # 1-9 in emoji form
+dice = [u"0⃣", u"1⃣", u"2⃣", u"3⃣", u"4⃣", u"5⃣", u"6⃣", u"7⃣", u"8⃣", u"9⃣️⃣️"]  # 1-9 in emoji form
 
 
 def diceRoll(argSet, diceStr="", *_):  # Returns a dice roll of the given dice.
@@ -275,12 +250,12 @@ def diceRoll(argSet, diceStr="", *_):  # Returns a dice roll of the given dice.
             s = s.replace(u"" + str(i), dice[i])
         return s
 
-    numDice, numSides = 1, 6 # Defaults to 1d6
+    numDice, numSides = 1, 6  # Defaults to 1d6
     if "d" in diceStr.lower():
         numDice, numSides = int(diceStr[:diceStr.lower().find("d")]), int(diceStr[diceStr.lower().find("d") + 1:])
     elif diceStr.isdigit():
         numDice = int(diceStr)
-    rolls = [randint(1, numSides) for _ in range(numDice)] # Roll the dice
+    rolls = [randint(1, numSides) for _ in range(numDice)]  # Roll the dice
     simpleReply(argSet,
         diceify(u"".join(str(s) + ", " for s in rolls) + u"Sum={}, Max={}, Min={}".format(sum(rolls), max(rolls),
             min(rolls))))
@@ -306,7 +281,8 @@ commands = {  # A dict containing the functions to run when a given command is e
     "removepun": lambda argSet, pun, *_: removePun(argSet, pun),
     "alias": addAlias,
     "unalias": removeAlias,
-    "aliases": lambda argSet, *_: simpleReply(argSet, "Valid aliases: {}".format(str(aliases.keys())[1:-1])),
+    "aliases": lambda argSet, *_: simpleReply(argSet,
+        "Valid aliases: {}".format(str(aliases.keys())[1:-1]).replace("u'", "'")),
     "me": lambda argSet, *_: simpleReply(argSet, "*{} {}.".format(
         purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2])), argSet[2][3 + len(commandDelimiter):])),
     "botme": lambda argSet, *_: simpleReply(argSet, "*{} {}.".format(purple.PurpleAccountGetAlias(argSet[0]),
@@ -437,7 +413,7 @@ def messageListener(account, sender, message, conversation, flags):
         argSet = (account, sender, message, conversation, flags)
         if not runCommand(argSet, command, *args):
             simpleReply(argSet, "Command/alias \"{}\" not found. Valid commands: {} Valid aliases: {}".format(
-                command, str(sorted(commands.keys()))[1:-1], str(sorted(aliases.keys()))[1:-1]))
+                command, str(sorted(commands.keys()))[1:-1], str(sorted(aliases.keys()))[1:-1].replace("u'", "'")))
         return  # Commands are not to be sent out to other chats!
 
     # If the message was not a command, continue.
