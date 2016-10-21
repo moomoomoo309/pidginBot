@@ -1,15 +1,14 @@
 #!/usr/bin/env python
 # coding: UTF-8
 
-# emoji, humanize and PyGObject are dependencies. "pip install emoji PyGObject humanize --upgrade" will do that for you.
+# emoji, humanize and PyGObject are dependencies. "pip install emoji pygobject humanize --upgrade" will do that for you.
 from __future__ import print_function
 
-import sys
+from sys import exit
 from datetime import datetime, timedelta
 from math import ceil
-# from ast import literal_eval
 from random import randint
-from humanize import naturaldelta
+from humanize import naturaldelta, naturaltime
 
 from gi.repository import GObject
 from pydbus import SessionBus
@@ -26,14 +25,10 @@ def readFile(path):
     fileHandle = open(path, mode="r")
     out = None
     strFile = fileHandle.read(-1)
-    #    try:
-    #        out = literal_eval(strFile)
-    #    except (SyntaxError, ValueError):
-    #        pass
     if out is None and strFile != "":
         try:
-            out = loads(strFile)
-        except EOFError:
+            out = loads(strFile)  # json.loads is WAY faster than ast.literal_eval!
+        except ValueError:
             pass
 
     fileHandle.close()  # No need to keep the file handle open unnecessarily.
@@ -51,12 +46,12 @@ def updateFile(path, value):
 
 
 # Read files for persistent values.
-messageLinks, puns, aliases, atGDS = readFiles("messageLinks.json", "Puns.json", "Aliases.json", "atGDS.json")
+messageLinks, puns, aliases, atLoc = readFiles("messageLinks.json", "Puns.json", "Aliases.json", "atLoc.json")
 
 messageLinks = messageLinks or {}
 puns = puns or []
 aliases = aliases or {}
-atGDS = atGDS or {}
+atLoc = atLoc or {}
 
 
 def getPun(punFilter):  # Gets a random pun, or a random pun that satisfies the provided filter.
@@ -74,7 +69,7 @@ def Help(argSet, page=(), *_):  # Returns help text for the given command, or a 
     if cmd and cmd.lower() in helpText:  # If the help text for a given command was asked for
         simpleReply(argSet, helpText[cmd.lower()])
     elif not page or (page and page.isdigit()):  # If a page number was asked for
-        page = int(page) or 1
+        page = int(page) if page and page.isdigit() else 1
         helpStr = ""
         helpStr += "Help page {}/{}".format(int(min(page, ceil(1.0 * len(iteratableCommands) / commandsPerPage))),
             int(ceil(1.0 * len(iteratableCommands) / commandsPerPage)))
@@ -134,7 +129,7 @@ def addAlias(argSet, *_):  # Adds an alias for a command, or replies what an ali
     message = argSet[2][7 + len(commandDelimiter):]
     if message == "":
         return
-    command = message[:message.find(" ")] if " " in message else message
+    command = (message[:message.find(" ")] if " " in message else message).lower()
     argsMsg = message[message.find(" ") + 1 + len(commandDelimiter):]
     args = [str(arg) for arg in argsMsg.split(" ")]
     if " " not in message:  # If the user is asking for the command run by a specific alias.
@@ -145,9 +140,6 @@ def addAlias(argSet, *_):  # Adds an alias for a command, or replies what an ali
         return
     if str(command) in commands:
         simpleReply(argSet, "That name is already used by a command!")
-        return
-    elif str(command) in aliases:
-        simpleReply(argSet, "That alias already exists!")
         return
     aliases[str(command)] = (argsMsg, args)
     simpleReply(argSet, "\"{}\" bound to \"{}\".".format(commandDelimiter + command, commandDelimiter + argsMsg))
@@ -195,8 +187,7 @@ def runCommand(argSet, command, *args):  # Runs the command given the argSet and
         newMsg = message.replace(command, aliases[command][0]).replace("%sendername", purple.PurpleBuddyGetAlias(
             purple.PurpleFindBuddy(*argSet[:2]))).replace("%botname", purple.PurpleAccountGetAlias(argSet[0])).replace(
             "%chattitle", purple.PurpleConversationGetTitle(argSet[3])).replace("%chatname",
-            purple.PurpleConversationGetName(argSet[3])).replace("%serveralias", purple.PurpleBuddyGetServerAlias(
-            purple.PurpleFindBuddy(*argSet[:2])))  # Adds a few variables you can put into aliases
+            purple.PurpleConversationGetName(argSet[3]))  # Adds a few variables you can put into aliases
         commands[aliases[command][1][0]]((argSet[0], argSet[1], newMsg, argSet[3], argSet[4]), *(
             tuple(args) + tuple(aliases[command][1][len(commandDelimiter):])))  # Run the alias's command
         return True
@@ -217,28 +208,56 @@ def Mimic(argSet, user=None, firstWordOfCmd=None, *_):  # Runs a command as a di
         simpleReply(argSet, "That's not a command!")
 
 
-def gds(argSet, *_):
-    atGDS[purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2]))] = now()  # Update the last visit time
-    simpleReply(argSet, "{} is going to GDS.".format(purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2]))))
-    updateFile("atGDS.json", atGDS)
+def loc(argSet, *_):  # Tells the chat you've gone somewhere
+    time = argSet[2][len(commandDelimiter) + 4:argSet[2].find(" ", len(commandDelimiter) + 4)]
+    location = argSet[2][argSet[2].find(" ", len(commandDelimiter) + 4) + 1:] if len(argSet[2]) > len(
+        commandDelimiter) + 4 else "GDS"
+    atLoc[purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2]))] = [now(), location, time]  # Update the time
+    getHrs = lambda time: int(time if "h" not in time.lower() else time[:time.lower().find("h")])
+    getMins = lambda time: int(0 if "h" not in time.lower() else time[time.lower().find("h") + 1:])
+    numHrs = getHrs(time)
+    numMins = getMins(time)
+    simpleReply(argSet,
+        "{} is going to {} for {}{}{}.".format(purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2])),
+            location,
+            naturaldelta(timedelta(hours=getHrs(time))) if numHrs != 0 else "",
+            " and " if numHrs != 0 and numMins != 0 else "",
+            naturaldelta(timedelta(minutes=getMins(time))) if bool(int(getMins(time))) else ""))
+    updateFile("atLoc.json", atLoc)
 
 
-def leftGds(argSet, *_):
-    # Specify the last visit time as now minus two hours, an hour longer than atGds will show.
-    atGDS[purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2]))] = now() - timedelta(hours=2)
-    simpleReply(argSet, "{} left GDS.".format(purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2]))))
-    updateFile("atGDS.json", atGDS)
+def leftLoc(argSet, *_):
+    loc = atLoc[purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2]))]
+    loc[0] = now() - timedelta(hours=2)  # Set the last visit time to now minus two hours.
+    simpleReply(argSet, "{} left {}.".format(purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2])), loc[1]))
+    updateFile("atLoc.json", atLoc)
 
 
-def atGds(argSet, *_):
-    # Filter out people who have been to GDS in the last hour
-    GDS = [name for name in atGDS.keys() if now() - atGDS[name] < timedelta(hours=1)]
+def AtLoc(argSet, *_):
+    def toDate(string):
+        if type(string) == datetime:
+            return string
+        try:
+            return datetime.strptime(string, '%a, %d %b %Y %H:%M:%S UTC')
+        except:
+            return now()
+
+    location = argSet[2][len(commandDelimiter) + 6:] if " " in argSet[2] else "anywhere"
+    getHrs = lambda time: int(time if "h" not in time.lower() else time[:time.lower().find("h")])
+    getMins = lambda time: int(0 if "h" not in time.lower() else time[time.lower().find("h") + 1:])
+
+    # Filter out people who have been somewhere in the last hour
+    lastHour = [name for name in atLoc.keys() if
+        now() - toDate(atLoc[name][0]) < timedelta(hours=getHrs(atLoc[name][2]), minutes=getMins(atLoc[name][2])) and (
+            atLoc[name][1] == location or location == "anywhere")]
     # Write the names to a string.
-    strPeopleAtGDS = u"".join([u"{} went to GDS {} ago. ".format(n, naturaldelta(now() - atGDS[n])) for n in GDS])
-    if GDS:
-        simpleReply(argSet, strPeopleAtGDS)
+    strPeopleAtLoc = u"".join(
+        [u"{} went to {} {} ago. ".format(n, atLoc[n][1], naturaldelta(now() - toDate(atLoc[n][0]))) for n in lastHour])
+    if lastHour:
+        simpleReply(argSet, strPeopleAtLoc)
     else:  # If no one has been to GDS
-        simpleReply(argSet, "No one went to GDS in the last hour.")
+        simpleReply(argSet,
+            "No one went {} in the last hour.".format(location if location == "anywhere" else "to " + location))
 
 
 dice = [u"0⃣", u"1⃣", u"2⃣", u"3⃣", u"4⃣", u"5⃣", u"6⃣", u"7⃣", u"8⃣", u"9⃣️⃣️"]  # 1-9 in emoji form
@@ -266,10 +285,10 @@ commands = {  # A dict containing the functions to run when a given command is e
     "ping": lambda argSet, *_: simpleReply(argSet, "Pong!"),
     "chats": lambda argSet, *_: simpleReply(argSet, str(
         [str(purple.PurpleConversationGetTitle(conv)) + " (" + str(conv) + ")" for conv
-            in purple.PurpleGetConversations()])[1:-1]),
+            in purple.PurpleGetConversations()][1:-1])),
     "args": lambda argSet, *_: simpleReply(argSet, str(argSet)),
     "echo": lambda argSet, *_: simpleReply(argSet, argSet[2][argSet[2].find("echo") + 4 + len(commandDelimiter):]),
-    "exit": lambda *_: sys.exit(0),
+    "exit": lambda *_: exit(0),
     "msg": lambda argSet, msg="", *_: sendMessage(argSet[-2], getConvFromPartialName(msg), [],
         purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2])) + ": " +
         argSet[2][argSet[2][4 + len(commandDelimiter):].find(" ") + 5 + len(commandDelimiter):]),
@@ -293,10 +312,11 @@ commands = {  # A dict containing the functions to run when a given command is e
     "users": lambda argSet, *_: simpleReply(argSet, emojize(str(
         [purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(argSet[0], purple.PurpleConvChatCbGetName(user))) for user in
             purple.PurpleConvChatGetUsers(purple.PurpleConvChat(argSet[3]))][:-1]), use_aliases=True)),
-    "gds": gds,
-    "atgds": atGds,
-    "leftgds": leftGds,
+    "loc": loc,
+    "atloc": AtLoc,
+    "leftloc": leftLoc,
     "diceroll": diceRoll,
+    "restart": lambda *_: exit(37)
 }
 
 helpText = {  # The help text for each command.
@@ -321,10 +341,11 @@ helpText = {  # The help text for each command.
     "randomemoji": "Replies with the specified number of random emojis.",
     "mimic": "Runs the specified command as if it was run by the specified user.",
     "users": "Lists all of the users in the current chat.",
-    "gds": "Tells the chat you've gone to GDS.",
-    "atgds": "Replies with who's said they're at GDS within the last hour.",
-    "leftgds": "Tells the chat you've left GDS.",
-    "diceroll": "Rolls the specified number of dice, returning the min, max, and sum of the dice rolls. 1d6 by default."
+    "loc": "Tells the chat you've gone somewhere.",
+    "atloc": "Replies with who's said they're somewhere within the last hour and where they are.",
+    "leftloc": "Tells the chat you've left somewhere.",
+    "diceroll": "Rolls the specified number of dice, returning the min, max, and sum of the rolls. 1d6 by default.",
+    "restart": "Restarts the bot."
 }
 
 
@@ -348,7 +369,7 @@ getConvByName = lambda name: next(
 
 logFile = open("Pidgin_Crossover_Messages.log", mode="a")
 # Writes a string to the log file.
-logStr = lambda string: logFile.write(str(u"[{}] ".format(now().isoformat())) + demojize(string))
+logStr = lambda string: logFile.write(str(u"[{}] {}\n".format(now().isoformat(), demojize(string))))
 
 log = lambda string: [fct(string + "\n") for fct in (print, logStr)]  # Prints and writes to the log file.
 
@@ -372,10 +393,9 @@ def sendMessage(sending, receiving, nick, message):  # Sends a message on the gi
     sendTitle = purple.PurpleConversationGetTitle(sending)
     receiveTitle = purple.PurpleConversationGetTitle(receiving)
     try:  # Logging errors should not break things.
-        log(demojize(
-            u"Sent \"{}\" from {} ({}) to {} ({}).".format((nick + ": " + message if nick else message),
-                sendTitle, sending, receiveTitle,
-                conv)))  # Sent "message" from chat 1 (chat ID) to chat 2 (chat ID).
+        log(demojize(u"[{}] Sent \"{}\" from {} ({}) to {} ({}).".format(now().isoformat(),
+            (nick + ": " + message if nick else message),
+            sendTitle, sending, receiveTitle, conv)))  # Sent "message" from chat 1 (chat ID) to chat 2 (chat ID).
         # Removes emojis from messages, not all consoles support emoji, and not all files like emojis written to them.
 
         logFile.flush()  # Update the log since it's been written to.
@@ -402,7 +422,7 @@ def messageListener(account, sender, message, conversation, flags):
     nick = purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(account, sender))
     # Logs messages. Logging errors will not prevent commands from working.
     try:
-        logStr(u"{}: {}".format(nick, (u"" + str(message))))
+        logStr(u"{}: {}\n".format(nick, (u"" + str(message))))
         logFile.flush()
     except UnicodeError:
         pass
