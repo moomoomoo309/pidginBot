@@ -8,7 +8,7 @@ from sys import exit
 from datetime import datetime, timedelta
 from math import ceil
 from random import randint
-from humanize import naturaldelta, naturaltime
+from humanize import naturaldelta
 
 from gi.repository import GObject
 from pydbus import SessionBus
@@ -38,6 +38,16 @@ def readFile(path):
 readFiles = lambda *paths: [readFile(path) for path in paths]
 
 
+def getChats():
+    rawChats = getChats()
+    chatIDs = dict()
+    for i in rawChats:
+        info = (purple.PurpleConversationGetAccount(i), purple.PurpleConversationGetTitle(i))
+        if info not in chatIDs or i > chatIDs[i]:
+            chatIDs[info] = i
+    return chatIDs.values()
+
+
 def updateFile(path, value):
     openFile = open(path, mode="w")  # To update a file
     openFile.write(dumps(value, openFile, indent=4,
@@ -49,17 +59,21 @@ def updateFile(path, value):
 messageLinks, puns, aliases, atLoc = readFiles("messageLinks.json", "Puns.json", "Aliases.json", "atLoc.json")
 
 messageLinks = messageLinks or {}
-puns = puns or []
+puns = puns or {}
 aliases = aliases or {}
 atLoc = atLoc or {}
 
 
-def getPun(punFilter):  # Gets a random pun, or a random pun that satisfies the provided filter.
+def getPun(argSet, punFilter):  # Gets a random pun, or a random pun that satisfies the provided filter.
+    chat = getChatName(argSet[3])
+    puns[chat] = puns[chat] if chat in puns else []
+    if len(puns[chat]) == 0:
+        return "No puns found!"
     if not punFilter:
-        return puns[randint(0, len(puns) - 1)]
-    validPuns = list(filter(lambda pun: str(punFilter) in str(pun), puns))
+        return puns[chat][randint(0, len(puns) - 1)]
+    validPuns = list(filter(lambda pun: str(punFilter) in str(pun), puns[chat]))
     return (validPuns[randint(0, len(validPuns) - 1)]) if len(validPuns) > 0 else (
-        "Does not punpute! Random Pun: " + puns[randint(0, len(puns) - 1)])
+        "Does not punpute! Random Pun: " + puns[chat][randint(0, len(puns) - 1)])
 
 
 def Help(argSet, page=(), *_):  # Returns help text for the given command, or a page listing all commands.
@@ -113,19 +127,28 @@ def Unlink(argSet, chat, *chats):  # Unlinks chats from chat. Supports partial n
 
 
 def addPun(argSet, pun):  # Adds a pun to the pun list, then updates the file.
-    puns.append(str(pun))
+    chat = getChatName(argSet[3])
+    puns[chat] = puns[chat] if chat in puns else []
+    puns[chat].append(str(pun))
     updateFile("Puns.json", puns)
     simpleReply(argSet, "\"{}\" added to the pun list.".format(pun))
 
 
 def removePun(argSet, pun):  # Removes a pun from the pun list, then updates the file.
+    chat = getChatName(argSet[3])
+    puns[chat] = puns[chat] if chat in puns else []
     fullPun = next((fullPun for fullPun in puns if str(pun) in fullPun), None)
-    puns.remove(fullPun)
+    if fullPun is None:
+        simpleReply(argSet, "No pun found containing \"{}\".".format(pun))
+        return
+    puns[chat].remove(fullPun)
     simpleReply(argSet, "\"{}\" removed from the pun list.".format(fullPun))
     updateFile("Puns.json", puns)
 
 
 def addAlias(argSet, *_):  # Adds an alias for a command, or replies what an alias runs.
+    chat = getChatName(argSet[3])
+    aliases[chat] = aliases[chat] if chat in aliases else {}
     message = argSet[2][7 + len(commandDelimiter):]
     if message == "":
         return
@@ -133,25 +156,27 @@ def addAlias(argSet, *_):  # Adds an alias for a command, or replies what an ali
     argsMsg = message[message.find(" ") + 1 + len(commandDelimiter):]
     args = [str(arg) for arg in argsMsg.split(" ")]
     if " " not in message:  # If the user is asking for the command run by a specific alias.
-        if str(command) not in aliases:  # If the alias asked for does not exist.
+        if str(command) not in aliases[chat]:  # If the alias asked for does not exist.
             simpleReply(argSet, "No alias \"{}\" found.".format(str(command)))
             return
-        simpleReply(argSet, '"' + commandDelimiter + aliases[str(command)][0] + '"')
+        simpleReply(argSet, '"' + commandDelimiter + aliases[chat][str(command)][0] + '"')
         return
     if str(command) in commands:
         simpleReply(argSet, "That name is already used by a command!")
         return
-    aliases[str(command)] = (argsMsg, args)
+    aliases[chat][str(command)] = (argsMsg, args)
     simpleReply(argSet, "\"{}\" bound to \"{}\".".format(commandDelimiter + command, commandDelimiter + argsMsg))
     updateFile("Aliases.json", aliases)
 
 
 def removeAlias(argSet, alias=(), *_):  # Removes an alias to a command.
+    chat = getChatName(argSet[3])
+    aliases[chat] = aliases[chat] if chat in aliases else {}
     if not alias:
         simpleReply(argSet, "Enter an alias to remove!")
         return
     if alias[len(commandDelimiter):] in aliases:
-        aliases.pop(alias[len(commandDelimiter):])
+        aliases[chat].pop(alias[chat][len(commandDelimiter):])
     else:
         simpleReply(argSet, "No alias \"{}\" found.".format(alias))
         return
@@ -159,16 +184,20 @@ def removeAlias(argSet, alias=(), *_):  # Removes an alias to a command.
     updateFile("Aliases.json", aliases)
 
 
+getNameFromArgs = lambda account, name: purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(account, name))
+getChatName = lambda chatId: purple.PurpleConversationGetTitle(chatId)
+
+
 def getFullUsername(argSet, partialName):  # Returns a user's alias given their partial name.
     users = getUserFromName(argSet, partialName)
-    return [purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(argSet[0], buddy)) for buddy in
+    return [getNameFromArgs(argSet[0], buddy) for buddy in
         users] if users is not None else None
 
 
 def getUserFromName(argSet, partialName):  # Returns the "name" of a user given their partial name.
     buddies = [purple.PurpleConvChatCbGetName(user) for user in
         purple.PurpleConvChatGetUsers(purple.PurpleConvChat(argSet[3]))][:-1]
-    names = [purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(argSet[0], buddy)) for buddy in buddies]
+    names = [getNameFromArgs(argSet[0], buddy) for buddy in buddies]
     # Check the beginning first, otherwise, check if the partialname is somewhere in the name.
     return next((buddies[i] for i in range(len(names)) if names[i][0:len(partialName)].lower() == partialName.lower()),
         None) or next((buddies[i] for i in range(len(names)) if partialName.lower() in names[i].lower()), None)
@@ -176,20 +205,22 @@ def getUserFromName(argSet, partialName):  # Returns the "name" of a user given 
 
 def runCommand(argSet, command, *args):  # Runs the command given the argSet and the command it's trying to run.
     command = command or argSet[2][:argSet[2].find(" ")]
+    chat = getChatName(argSet[3])
+    aliases[chat] = aliases[chat] if chat in aliases else {}
     if command in commands:
         commands[command](argSet, *args)
         return True
-    elif command in aliases:
+    elif command in aliases[chat]:
         message = argSet[2]
         command = message[len(commandDelimiter):message.find(" ") if " " in message else len(message)].lower()
         message = message[:message.lower().find(command)] + command + message[
         message.lower().find(command) + len(command):]
-        newMsg = message.replace(command, aliases[command][0]).replace("%sendername", purple.PurpleBuddyGetAlias(
-            purple.PurpleFindBuddy(*argSet[:2]))).replace("%botname", purple.PurpleAccountGetAlias(argSet[0])).replace(
+        newMsg = message.replace(command, aliases[chat][command][0]).replace("%sendername",
+            getNameFromArgs(*argSet[:2])).replace("%botname", purple.PurpleAccountGetAlias(argSet[0])).replace(
             "%chattitle", purple.PurpleConversationGetTitle(argSet[3])).replace("%chatname",
             purple.PurpleConversationGetName(argSet[3]))  # Adds a few variables you can put into aliases
-        commands[aliases[command][1][0]]((argSet[0], argSet[1], newMsg, argSet[3], argSet[4]), *(
-            tuple(args) + tuple(aliases[command][1][len(commandDelimiter):])))  # Run the alias's command
+        commands[aliases[chat][command][1][0]]((argSet[0], argSet[1], newMsg, argSet[3], argSet[4]), *(
+            tuple(args) + tuple(aliases[chat][command][1][len(commandDelimiter):])))  # Run the alias's command
         return True
     return False
 
@@ -212,13 +243,16 @@ def loc(argSet, *_):  # Tells the chat you've gone somewhere
     time = argSet[2][len(commandDelimiter) + 4:argSet[2].find(" ", len(commandDelimiter) + 4)]
     location = argSet[2][argSet[2].find(" ", len(commandDelimiter) + 4) + 1:] if len(argSet[2]) > len(
         commandDelimiter) + 4 else "GDS"
-    atLoc[purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2]))] = [now(), location, time]  # Update the time
-    getHrs = lambda time: int(time if "h" not in time.lower() else time[:time.lower().find("h")])
-    getMins = lambda time: int(0 if "h" not in time.lower() else time[time.lower().find("h") + 1:])
+    chat = getChatName(argSet[3])
+    atLoc[chat] = atLoc[chat] if chat in atLoc else {}
+    # Update the time
+    atLoc[chat][purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2]))] = [now(), location, time]
+    getHrs = lambda currTime: int(currTime if "h" not in currTime.lower() else currTime[:currTime.lower().find("h")])
+    getMins = lambda currTime: int(0 if "h" not in currTime.lower() else currTime[currTime.lower().find("h") + 1:])
     numHrs = getHrs(time)
     numMins = getMins(time)
     simpleReply(argSet,
-        "{} is going to {} for {}{}{}.".format(purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2])),
+        "{} is going to {} for {}{}{}.".format(getNameFromArgs(*argSet[:2]),
             location,
             naturaldelta(timedelta(hours=getHrs(time))) if numHrs != 0 else "",
             " and " if numHrs != 0 and numMins != 0 else "",
@@ -227,9 +261,12 @@ def loc(argSet, *_):  # Tells the chat you've gone somewhere
 
 
 def leftLoc(argSet, *_):
-    loc = atLoc[purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2]))]
-    loc[0] = now() - timedelta(hours=2)  # Set the last visit time to now minus two hours.
-    simpleReply(argSet, "{} left {}.".format(purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2])), loc[1]))
+    chat = getChatName(argSet[3])
+    atLoc[chat] = atLoc[chat] if chat in atLoc else {}
+    thisLoc = atLoc[chat][purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2]))]
+    thisLoc[0] = now() - timedelta(hours=2)  # Set the last visit time to now minus two hours.
+    simpleReply(argSet,
+        "{} left {}.".format(getNameFromArgs(*argSet[:2]), thisLoc[1]))
     updateFile("atLoc.json", atLoc)
 
 
@@ -243,16 +280,18 @@ def AtLoc(argSet, *_):
             return now()
 
     location = argSet[2][len(commandDelimiter) + 6:] if " " in argSet[2] else "anywhere"
+    chat = getChatName(argSet[3])
+    atLoc[chat] = atLoc[chat] if chat in atLoc else {}
     getHrs = lambda time: int(time if "h" not in time.lower() else time[:time.lower().find("h")])
     getMins = lambda time: int(0 if "h" not in time.lower() else time[time.lower().find("h") + 1:])
 
     # Filter out people who have been somewhere in the last hour
-    lastHour = [name for name in atLoc.keys() if
-        now() - toDate(atLoc[name][0]) < timedelta(hours=getHrs(atLoc[name][2]), minutes=getMins(atLoc[name][2])) and (
-            atLoc[name][1] == location or location == "anywhere")]
+    lastHour = [name for name in atLoc[chat].keys() if
+        now() - toDate(atLoc[chat][name][0]) < timedelta(hours=getHrs(atLoc[chat][name][2]),
+            minutes=getMins(atLoc[chat][name][2])) and (atLoc[chat][name][1] == location or location == "anywhere")]
     # Write the names to a string.
-    strPeopleAtLoc = u"".join(
-        [u"{} went to {} {} ago. ".format(n, atLoc[n][1], naturaldelta(now() - toDate(atLoc[n][0]))) for n in lastHour])
+    strPeopleAtLoc = u"".join([u"{} went to {} {} ago. ".format(
+        n, atLoc[n][1], naturaldelta(now() - toDate(atLoc[chat][n][0]))) for n in lastHour])
     if lastHour:
         simpleReply(argSet, strPeopleAtLoc)
     else:  # If no one has been to GDS
@@ -285,23 +324,23 @@ commands = {  # A dict containing the functions to run when a given command is e
     "ping": lambda argSet, *_: simpleReply(argSet, "Pong!"),
     "chats": lambda argSet, *_: simpleReply(argSet, str(
         [str(purple.PurpleConversationGetTitle(conv)) + " (" + str(conv) + ")" for conv
-            in purple.PurpleGetConversations()][1:-1])),
+            in getChats()][1:-1])),
     "args": lambda argSet, *_: simpleReply(argSet, str(argSet)),
     "echo": lambda argSet, *_: simpleReply(argSet, argSet[2][argSet[2].find("echo") + 4 + len(commandDelimiter):]),
-    "exit": lambda *_: exit(0),
+    "exit": lambda *_: exit(37),
     "msg": lambda argSet, msg="", *_: sendMessage(argSet[-2], getConvFromPartialName(msg), [],
-        purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2])) + ": " +
-        argSet[2][argSet[2][4 + len(commandDelimiter):].find(" ") + 5 + len(commandDelimiter):]),
+        getNameFromArgs(*argSet[:2]) + ": " + argSet[2][
+        argSet[2][4 + len(commandDelimiter):].find(" ") + 5 + len(commandDelimiter):]),
     "link": lambda argSet, *args: Link(argSet, *args),
     "unlink": lambda argSet, *args: Unlink(argSet, *args),
     "links": lambda argSet, *_: simpleReply(argSet, str(messageLinks)),
-    "pun": lambda argSet, pun=(), *_: simpleReply(argSet, getPun(pun)),
+    "pun": lambda argSet, pun=(), *_: simpleReply(argSet, getPun(argSet, pun)),
     "addpun": lambda argSet, *_: addPun(argSet, argSet[2][7 + len(commandDelimiter):]),
     "removepun": lambda argSet, pun, *_: removePun(argSet, pun),
     "alias": addAlias,
     "unalias": removeAlias,
     "aliases": lambda argSet, *_: simpleReply(argSet,
-        "Valid aliases: {}".format(str(aliases.keys())[1:-1]).replace("u'", "'")),
+        "Valid aliases: {}".format(str(aliases[getChatName(argSet[3])].keys())[1:-1]).replace("u'", "'")),
     "me": lambda argSet, *_: simpleReply(argSet, "*{} {}.".format(
         purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2])), argSet[2][3 + len(commandDelimiter):])),
     "botme": lambda argSet, *_: simpleReply(argSet, "*{} {}.".format(purple.PurpleAccountGetAlias(argSet[0]),
@@ -316,7 +355,7 @@ commands = {  # A dict containing the functions to run when a given command is e
     "atloc": AtLoc,
     "leftloc": leftLoc,
     "diceroll": diceRoll,
-    "restart": lambda *_: exit(37)
+    "restart": lambda *_: exit(0)
 }
 
 helpText = {  # The help text for each command.
@@ -350,7 +389,7 @@ helpText = {  # The help text for each command.
 
 
 def getFullConvName(partialName):  # Returns a full conversation title given a partial title.
-    conversations = [purple.PurpleConversationGetTitle(conv) for conv in purple.PurpleGetConversations()]
+    conversations = [purple.PurpleConversationGetTitle(conv) for conv in getChats()]
     # Check the beginning first, if none start with the partial name, find it in there somewhere.
     return next((i for i in conversations if i[0:len(partialName)] == partialName), None) or next(
         (i for i in conversations if partialName in i), None)
@@ -365,7 +404,7 @@ lastMessage = ""  # The last message, to prevent infinite looping.
 
 # Gets the ID of a conversation, given its name. Does not work if a message has not been received from that chat yet.
 getConvByName = lambda name: next(
-    (i for i in purple.PurpleGetConversations() if purple.PurpleConversationGetTitle(i) == name), None)
+    (i for i in getChats() if purple.PurpleConversationGetTitle(i) == name), None)
 
 logFile = open("Pidgin_Crossover_Messages.log", mode="a")
 # Writes a string to the log file.
