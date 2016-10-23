@@ -39,11 +39,12 @@ readFiles = lambda *paths: [readFile(path) for path in paths]
 
 
 def getChats():
-    rawChats = getChats()
+    rawChats = purple.PurpleGetConversations()
     chatIDs = dict()
     for i in rawChats:
         info = (purple.PurpleConversationGetAccount(i), purple.PurpleConversationGetTitle(i))
-        if info not in chatIDs or i > chatIDs[i]:
+        if info not in chatIDs or i > chatIDs[info] and (
+            (purple.PurpleConversationGetType(i) == 2 and i <= 10000) or purple.PurpleConversationGetType(i) != 2):
             chatIDs[info] = i
     return chatIDs.values()
 
@@ -62,6 +63,21 @@ messageLinks = messageLinks or {}
 puns = puns or {}
 aliases = aliases or {}
 atLoc = atLoc or {}
+aliasVars = [
+    ("%senderName", lambda argSet: getNameFromArgs(*argSet[:2])),
+    ("%botname", lambda argSet: purple.PurpleAccountGetAlias(argSet[0])),
+    ("%chattitle", lambda argSet: purple.PurpleConversationGetTitle(argSet[3])),
+    ("%chatname", lambda argSet: purple.PurpleConversationGetName(argSet[3]))
+]
+getHrs = lambda currTime: int((currTime or 0) if "h" not in currTime.lower() else currTime[:currTime.lower().find("h")])
+getMins = lambda currTime: int(0 if "h" not in currTime.lower() else currTime[currTime.lower().find("h") + 1:])
+
+
+def replaceAliasVars(argSet, message):
+    newMsg = message  # Don't touch the original
+    for i in aliasVars:
+        newMsg = newMsg.replace(i[0], i[1](argSet))
+    return newMsg
 
 
 def getPun(argSet, punFilter):  # Gets a random pun, or a random pun that satisfies the provided filter.
@@ -175,8 +191,8 @@ def removeAlias(argSet, alias=(), *_):  # Removes an alias to a command.
     if not alias:
         simpleReply(argSet, "Enter an alias to remove!")
         return
-    if alias[len(commandDelimiter):] in aliases:
-        aliases[chat].pop(alias[chat][len(commandDelimiter):])
+    if alias[len(commandDelimiter):] in aliases[chat]:
+        aliases[chat].pop(alias[len(commandDelimiter):])
     else:
         simpleReply(argSet, "No alias \"{}\" found.".format(alias))
         return
@@ -215,10 +231,7 @@ def runCommand(argSet, command, *args):  # Runs the command given the argSet and
         command = message[len(commandDelimiter):message.find(" ") if " " in message else len(message)].lower()
         message = message[:message.lower().find(command)] + command + message[
         message.lower().find(command) + len(command):]
-        newMsg = message.replace(command, aliases[chat][command][0]).replace("%sendername",
-            getNameFromArgs(*argSet[:2])).replace("%botname", purple.PurpleAccountGetAlias(argSet[0])).replace(
-            "%chattitle", purple.PurpleConversationGetTitle(argSet[3])).replace("%chatname",
-            purple.PurpleConversationGetName(argSet[3]))  # Adds a few variables you can put into aliases
+        newMsg = replaceAliasVars(argSet, message).replace(command, aliases[chat][command][0])
         commands[aliases[chat][command][1][0]]((argSet[0], argSet[1], newMsg, argSet[3], argSet[4]), *(
             tuple(args) + tuple(aliases[chat][command][1][len(commandDelimiter):])))  # Run the alias's command
         return True
@@ -243,14 +256,21 @@ def loc(argSet, *_):  # Tells the chat you've gone somewhere
     time = argSet[2][len(commandDelimiter) + 4:argSet[2].find(" ", len(commandDelimiter) + 4)]
     location = argSet[2][argSet[2].find(" ", len(commandDelimiter) + 4) + 1:] if len(argSet[2]) > len(
         commandDelimiter) + 4 else "GDS"
+    Loc(argSet, time, location)
+
+
+def Loc(argSet, time="1", location="GDS"):
     chat = getChatName(argSet[3])
     atLoc[chat] = atLoc[chat] if chat in atLoc else {}
     # Update the time
     atLoc[chat][purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2]))] = [now(), location, time]
-    getHrs = lambda currTime: int(currTime if "h" not in currTime.lower() else currTime[:currTime.lower().find("h")])
-    getMins = lambda currTime: int(0 if "h" not in currTime.lower() else currTime[currTime.lower().find("h") + 1:])
+
+    time = time if len(time) > 0 else "1"
     numHrs = getHrs(time)
+    numHrs = 1 if numHrs is not 0 and not numHrs else numHrs
     numMins = getMins(time)
+    numMins = 0 if numMins is not 0 and not numMins else numMins
+    print(numHrs, numMins, time, location)
     simpleReply(argSet,
         "{} is going to {} for {}{}{}.".format(getNameFromArgs(*argSet[:2]),
             location,
@@ -282,8 +302,6 @@ def AtLoc(argSet, *_):
     location = argSet[2][len(commandDelimiter) + 6:] if " " in argSet[2] else "anywhere"
     chat = getChatName(argSet[3])
     atLoc[chat] = atLoc[chat] if chat in atLoc else {}
-    getHrs = lambda time: int(time if "h" not in time.lower() else time[:time.lower().find("h")])
-    getMins = lambda time: int(0 if "h" not in time.lower() else time[time.lower().find("h") + 1:])
 
     # Filter out people who have been somewhere in the last hour
     lastHour = [name for name in atLoc[chat].keys() if
@@ -322,9 +340,9 @@ def diceRoll(argSet, diceStr="", *_):  # Returns a dice roll of the given dice.
 commands = {  # A dict containing the functions to run when a given command is entered.
     "help": Help,
     "ping": lambda argSet, *_: simpleReply(argSet, "Pong!"),
-    "chats": lambda argSet, *_: simpleReply(argSet, str(
-        [str(purple.PurpleConversationGetTitle(conv)) + " (" + str(conv) + ")" for conv
-            in getChats()][1:-1])),
+    "chats": lambda argSet, *_: simpleReply(argSet,
+        str([u"{} ({})".format(purple.PurpleConversationGetTitle(conv), conv) for conv in getChats()])[1:-1].replace(
+            "u'", "'")),
     "args": lambda argSet, *_: simpleReply(argSet, str(argSet)),
     "echo": lambda argSet, *_: simpleReply(argSet, argSet[2][argSet[2].find("echo") + 4 + len(commandDelimiter):]),
     "exit": lambda *_: exit(37),
@@ -352,6 +370,8 @@ commands = {  # A dict containing the functions to run when a given command is e
         [purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(argSet[0], purple.PurpleConvChatCbGetName(user))) for user in
             purple.PurpleConvChatGetUsers(purple.PurpleConvChat(argSet[3]))][:-1]), use_aliases=True)),
     "loc": loc,
+    "gds": lambda argSet, *_: Loc(argSet, time=argSet[2][len(commandDelimiter) + 4:]),
+    "loconly": lambda argSet, *_: Loc(argSet, location=argSet[2][len(commandDelimiter) + 7:]),
     "atloc": AtLoc,
     "leftloc": leftLoc,
     "diceroll": diceRoll,
@@ -381,6 +401,8 @@ helpText = {  # The help text for each command.
     "mimic": "Runs the specified command as if it was run by the specified user.",
     "users": "Lists all of the users in the current chat.",
     "loc": "Tells the chat you've gone somewhere.",
+    "gds": "Tells the chat you're going to GDS for some period of time.",
+    "loconly": "Tells the chat you're going somewhere for an hour.",
     "atloc": "Replies with who's said they're somewhere within the last hour and where they are.",
     "leftloc": "Tells the chat you've left somewhere.",
     "diceroll": "Rolls the specified number of dice, returning the min, max, and sum of the rolls. 1d6 by default.",
@@ -472,7 +494,8 @@ def messageListener(account, sender, message, conversation, flags):
         argSet = (account, sender, message, conversation, flags)
         if not runCommand(argSet, command, *args):
             simpleReply(argSet, "Command/alias \"{}\" not found. Valid commands: {} Valid aliases: {}".format(
-                command, str(sorted(commands.keys()))[1:-1], str(sorted(aliases.keys()))[1:-1].replace("u'", "'")))
+                command, str(sorted(commands.keys()))[1:-1],
+                str(sorted(aliases[getChatName(argSet[3])].keys()))[1:-1].replace("u'", "'")))
         return  # Commands are not to be sent out to other chats!
 
     # If the message was not a command, continue.
