@@ -44,7 +44,8 @@ def getChats():
     for i in rawChats:
         info = (purple.PurpleConversationGetAccount(i), purple.PurpleConversationGetTitle(i))
         if info not in chatIDs or i > chatIDs[info] and (
-            (purple.PurpleConversationGetType(i) == 2 and i <= 10000) or purple.PurpleConversationGetType(i) != 2):
+                    (purple.PurpleConversationGetType(i) == 2 and i <= 10000) or purple.PurpleConversationGetType(
+                    i) != 2):
             chatIDs[info] = i
     return chatIDs.values()
 
@@ -64,7 +65,7 @@ puns = puns or {}
 aliases = aliases or {}
 atLoc = atLoc or {}
 aliasVars = [
-    ("%senderName", lambda argSet: getNameFromArgs(*argSet[:2])),
+    ("%sendername", lambda argSet: getNameFromArgs(*argSet[:2])),
     ("%botname", lambda argSet: purple.PurpleAccountGetAlias(argSet[0])),
     ("%chattitle", lambda argSet: purple.PurpleConversationGetTitle(argSet[3])),
     ("%chatname", lambda argSet: purple.PurpleConversationGetName(argSet[3]))
@@ -86,7 +87,7 @@ def getPun(argSet, punFilter):  # Gets a random pun, or a random pun that satisf
     if len(puns[chat]) == 0:
         return "No puns found!"
     if not punFilter:
-        return puns[chat][randint(0, len(puns) - 1)]
+        return puns[chat][randint(0, len(puns[chat]) - 1)]
     validPuns = list(filter(lambda pun: str(punFilter) in str(pun), puns[chat]))
     return (validPuns[randint(0, len(validPuns) - 1)]) if len(validPuns) > 0 else (
         "Does not punpute! Random Pun: " + puns[chat][randint(0, len(puns) - 1)])
@@ -108,14 +109,14 @@ def Help(argSet, page=(), *_):  # Returns help text for the given command, or a 
                 helpText[iteratableCommands[i]] if iteratableCommands[i] in helpText else "")
         simpleReply(argSet, helpStr)
     else:
-        simpleReply(argSet, "No command \"{}\" found.".format(page))
+        simpleReply(argSet, u"No command \"{}\" found.".format(page))
 
 
 def Link(argSet, chat, *chats):  # Links chats to chat. Supports partial names.
     fullChatName = getFullConvName(chat)
     fullChatNames = [getFullConvName(chat) for chat in chats]
     if fullChatName in messageLinks:
-        messageLinks[fullChatName].append(fullChatNames)
+        messageLinks[fullChatName].append(*fullChatNames)
     else:
         messageLinks[fullChatName] = fullChatNames
     if len(messageLinks[fullChatName]) == 1:
@@ -128,18 +129,18 @@ def Unlink(argSet, chat, *chats):  # Unlinks chats from chat. Supports partial n
     fullChatName = getFullConvName(chat)
     removedChats = []
     if fullChatName not in messageLinks:  # If you wanted a chat that doesn't exist, just return.
-        simpleReply(argSet, "No chat \"{}\" found.".format(chat))
+        simpleReply(argSet, u"No chat \"{}\" found.".format(chat))
         return
     for i in chats:  # Remove each chat
         fullName = getFullConvName(i)
         if fullName == messageLinks[fullChatName]:
             messageLinks.pop(fullChatName)  # Remove the last message link from this chat.
-            simpleReply(argSet, "{} unlinked from {}.".format(fullName, fullChatName))
+            simpleReply(argSet, u"{} unlinked from {}.".format(fullName, fullChatName))
             return
         elif isinstance(messageLinks[fullChatName], dict) and fullName in messageLinks[fullChatName]:
             removedChats.append(messageLinks[fullChatName].pop(messageLinks[fullChatName].index(fullName)))
     updateFile("messageLinks.json", messageLinks)  # Update the messageLinks file.
-    simpleReply(argSet, "{} unlinked from {}.".format(str(removedChats)[1:-1], fullChatName))
+    simpleReply(argSet, u"{} unlinked from {}.".format(str(removedChats)[1:-1], fullChatName))
 
 
 def addPun(argSet, pun):  # Adds a pun to the pun list, then updates the file.
@@ -147,7 +148,7 @@ def addPun(argSet, pun):  # Adds a pun to the pun list, then updates the file.
     puns[chat] = puns[chat] if chat in puns else []
     puns[chat].append(str(pun))
     updateFile("Puns.json", puns)
-    simpleReply(argSet, "\"{}\" added to the pun list.".format(pun))
+    simpleReply(argSet, u"\"{}\" added to the pun list.".format(pun))
 
 
 def removePun(argSet, pun):  # Removes a pun from the pun list, then updates the file.
@@ -155,10 +156,10 @@ def removePun(argSet, pun):  # Removes a pun from the pun list, then updates the
     puns[chat] = puns[chat] if chat in puns else []
     fullPun = next((fullPun for fullPun in puns if str(pun) in fullPun), None)
     if fullPun is None:
-        simpleReply(argSet, "No pun found containing \"{}\".".format(pun))
+        simpleReply(argSet, u"No pun found containing \"{}\".".format(pun))
         return
     puns[chat].remove(fullPun)
-    simpleReply(argSet, "\"{}\" removed from the pun list.".format(fullPun))
+    simpleReply(argSet, u"\"{}\" removed from the pun list.".format(fullPun))
     updateFile("Puns.json", puns)
 
 
@@ -173,15 +174,15 @@ def addAlias(argSet, *_):  # Adds an alias for a command, or replies what an ali
     args = [str(arg) for arg in argsMsg.split(" ")]
     if " " not in message:  # If the user is asking for the command run by a specific alias.
         if str(command) not in aliases[chat]:  # If the alias asked for does not exist.
-            simpleReply(argSet, "No alias \"{}\" found.".format(str(command)))
+            simpleReply(argSet, u"No alias \"{}\" found.".format(str(command)))
             return
         simpleReply(argSet, '"' + commandDelimiter + aliases[chat][str(command)][0] + '"')
         return
     if str(command) in commands:
-        simpleReply(argSet, "That name is already used by a command!")
+        simpleReply(argSet, u"That name is already used by a command!")
         return
     aliases[chat][str(command)] = (argsMsg, args)
-    simpleReply(argSet, "\"{}\" bound to \"{}\".".format(commandDelimiter + command, commandDelimiter + argsMsg))
+    simpleReply(argSet, u"\"{}\" bound to \"{}\".".format(commandDelimiter + command, commandDelimiter + argsMsg))
     updateFile("Aliases.json", aliases)
 
 
@@ -189,14 +190,14 @@ def removeAlias(argSet, alias=(), *_):  # Removes an alias to a command.
     chat = getChatName(argSet[3])
     aliases[chat] = aliases[chat] if chat in aliases else {}
     if not alias:
-        simpleReply(argSet, "Enter an alias to remove!")
+        simpleReply(argSet, u"Enter an alias to remove!")
         return
     if alias[len(commandDelimiter):] in aliases[chat]:
         aliases[chat].pop(alias[len(commandDelimiter):])
     else:
-        simpleReply(argSet, "No alias \"{}\" found.".format(alias))
+        simpleReply(argSet, u"No alias \"{}\" found.".format(alias))
         return
-    simpleReply(argSet, "\"{}\" unaliased.".format(alias))
+    simpleReply(argSet, u"\"{}\" unaliased.".format(alias))
     updateFile("Aliases.json", aliases)
 
 
@@ -240,21 +241,21 @@ def runCommand(argSet, command, *args):  # Runs the command given the argSet and
 
 def Mimic(argSet, user=None, firstWordOfCmd=None, *_):  # Runs a command as a different user.
     if user is None or firstWordOfCmd is None:
-        simpleReply(argSet, "You need to specify the user to mimic and the command to mimic!")
+        simpleReply(argSet, u"You need to specify the user to mimic and the command to mimic!")
         return
     fullUser = getUserFromName(argSet, user)
     if fullUser is None:
-        simpleReply(argSet, "No user by the name \"{}\" found.".format(user))
+        simpleReply(argSet, u"No user by the name \"{}\" found.".format(user))
     # The command, after the user argument.
-    cmd = argSet[2][6 + len(commandDelimiter):][argSet[2][6 + len(commandDelimiter):].find(" ") + 1:]
+    cmd = argSet[2][6 + len(commandDelimiter):][argSet[2][6 + len(commandDelimiter):].find(" ") + 1:].lower()
     if not runCommand((argSet[0], fullUser, cmd, argSet[3], argSet[4]), cmd.split(" ")[0][len(commandDelimiter):],
             *cmd.split(" ")[len(commandDelimiter):]):
-        simpleReply(argSet, "That's not a command!")
+        simpleReply(argSet, u"That's not a command!")
 
 
 def loc(argSet, *_):  # Tells the chat you've gone somewhere
     time = argSet[2][len(commandDelimiter) + 4:argSet[2].find(" ", len(commandDelimiter) + 4)]
-    location = argSet[2][argSet[2].find(" ", len(commandDelimiter) + 4) + 1:] if len(argSet[2]) > len(
+    location = argSet[2][argSet[2].find(" ", len(commandDelimiter) + 4) + 2:] if len(argSet[2]) > len(
         commandDelimiter) + 4 else "GDS"
     Loc(argSet, time, location)
 
@@ -263,20 +264,26 @@ def Loc(argSet, time="1", location="GDS"):
     chat = getChatName(argSet[3])
     atLoc[chat] = atLoc[chat] if chat in atLoc else {}
     # Update the time
-    atLoc[chat][purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2]))] = [now(), location, time]
+    name = purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2]))
+    atLoc[chat][name] = [now(), location, time]
 
     time = time if len(time) > 0 else "1"
-    numHrs = getHrs(time)
+    numHrs, numMins, appendMsg = 1, 0, ""
+    try:
+        numHrs = getHrs(time)
+        numMins = getMins(time)
+    except ValueError:
+        appendMsg = time
     numHrs = 1 if numHrs is not 0 and not numHrs else numHrs
-    numMins = getMins(time)
     numMins = 0 if numMins is not 0 and not numMins else numMins
-    print(numHrs, numMins, time, location)
     simpleReply(argSet,
-        "{} is going to {} for {}{}{}.".format(getNameFromArgs(*argSet[:2]),
+        "{} is going to {}{} for {}{}{}.".format(
+            getNameFromArgs(*argSet[:2]),
             location,
-            naturaldelta(timedelta(hours=getHrs(time))) if numHrs != 0 else "",
+            (" " + appendMsg if len(appendMsg) > 0 else ""),
+            naturaldelta(timedelta(hours=numHrs)) if numHrs != 0 else "",
             " and " if numHrs != 0 and numMins != 0 else "",
-            naturaldelta(timedelta(minutes=getMins(time))) if bool(int(getMins(time))) else ""))
+            naturaldelta(timedelta(minutes=numMins)) if bool(int(numMins)) else ""))
     updateFile("atLoc.json", atLoc)
 
 
@@ -307,9 +314,10 @@ def AtLoc(argSet, *_):
     lastHour = [name for name in atLoc[chat].keys() if
         now() - toDate(atLoc[chat][name][0]) < timedelta(hours=getHrs(atLoc[chat][name][2]),
             minutes=getMins(atLoc[chat][name][2])) and (atLoc[chat][name][1] == location or location == "anywhere")]
+    print([naturaldelta(now() - toDate(atLoc[chat][name][0])) for name in atLoc[chat].keys()])
     # Write the names to a string.
     strPeopleAtLoc = u"".join([u"{} went to {} {} ago. ".format(
-        n, atLoc[n][1], naturaldelta(now() - toDate(atLoc[chat][n][0]))) for n in lastHour])
+        n, atLoc[chat][n][1], naturaldelta(now() - toDate(atLoc[chat][n][0]))) for n in lastHour])
     if lastHour:
         simpleReply(argSet, strPeopleAtLoc)
     else:  # If no one has been to GDS
@@ -339,12 +347,12 @@ def diceRoll(argSet, diceStr="", *_):  # Returns a dice roll of the given dice.
 
 commands = {  # A dict containing the functions to run when a given command is entered.
     "help": Help,
-    "ping": lambda argSet, *_: simpleReply(argSet, "Pong!"),
+    "ping": lambda argSet, *_: simpleReply(argSet, u"Pong!"),
     "chats": lambda argSet, *_: simpleReply(argSet,
         str([u"{} ({})".format(purple.PurpleConversationGetTitle(conv), conv) for conv in getChats()])[1:-1].replace(
             "u'", "'")),
     "args": lambda argSet, *_: simpleReply(argSet, str(argSet)),
-    "echo": lambda argSet, *_: simpleReply(argSet, argSet[2][argSet[2].find("echo") + 4 + len(commandDelimiter):]),
+    "echo": lambda argSet, *_: simpleReply(argSet, argSet[2][argSet[2].find(u"echo") + 4 + len(commandDelimiter):]),
     "exit": lambda *_: exit(37),
     "msg": lambda argSet, msg="", *_: sendMessage(argSet[-2], getConvFromPartialName(msg), [],
         getNameFromArgs(*argSet[:2]) + ": " + argSet[2][
@@ -359,9 +367,9 @@ commands = {  # A dict containing the functions to run when a given command is e
     "unalias": removeAlias,
     "aliases": lambda argSet, *_: simpleReply(argSet,
         "Valid aliases: {}".format(str(aliases[getChatName(argSet[3])].keys())[1:-1]).replace("u'", "'")),
-    "me": lambda argSet, *_: simpleReply(argSet, "*{} {}.".format(
+    "me": lambda argSet, *_: simpleReply(argSet, u"*{} {}.".format(
         purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2])), argSet[2][3 + len(commandDelimiter):])),
-    "botme": lambda argSet, *_: simpleReply(argSet, "*{} {}.".format(purple.PurpleAccountGetAlias(argSet[0]),
+    "botme": lambda argSet, *_: simpleReply(argSet, u"*{} {}.".format(purple.PurpleAccountGetAlias(argSet[0]),
         argSet[2][6 + len(commandDelimiter):])),
     "randomemoji": lambda argSet, amt=1, *_: simpleReply(argSet, u"".join(
         [emojis.values()[randint(0, len(emojis) - 1)] for _ in range(int(amt) or 1)])),
@@ -371,7 +379,7 @@ commands = {  # A dict containing the functions to run when a given command is e
             purple.PurpleConvChatGetUsers(purple.PurpleConvChat(argSet[3]))][:-1]), use_aliases=True)),
     "loc": loc,
     "gds": lambda argSet, *_: Loc(argSet, time=argSet[2][len(commandDelimiter) + 4:]),
-    "loconly": lambda argSet, *_: Loc(argSet, location=argSet[2][len(commandDelimiter) + 7:]),
+    "loconly": lambda argSet, *_: Loc(argSet, location=argSet[2][len(commandDelimiter) + 8:]),
     "atloc": AtLoc,
     "leftloc": leftLoc,
     "diceroll": diceRoll,
@@ -492,8 +500,8 @@ def messageListener(account, sender, message, conversation, flags):
         command = message[len(commandDelimiter):message.find(" ") if " " in message else len(message)].lower()
         args = message.split(" ")[1:]
         argSet = (account, sender, message, conversation, flags)
-        if not runCommand(argSet, command, *args):
-            simpleReply(argSet, "Command/alias \"{}\" not found. Valid commands: {} Valid aliases: {}".format(
+        if not runCommand(argSet, command.lower(), *args):
+            simpleReply(argSet, u"Command/alias \"{}\" not found. Valid commands: {} Valid aliases: {}".format(
                 command, str(sorted(commands.keys()))[1:-1],
                 str(sorted(aliases[getChatName(argSet[3])].keys()))[1:-1].replace("u'", "'")))
         return  # Commands are not to be sent out to other chats!
