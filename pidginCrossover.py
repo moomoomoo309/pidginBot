@@ -70,8 +70,20 @@ aliasVars = [
     ("%chattitle", lambda argSet: purple.PurpleConversationGetTitle(argSet[3])),
     ("%chatname", lambda argSet: purple.PurpleConversationGetName(argSet[3]))
 ]
-getHrs = lambda currTime: int((currTime or 0) if "h" not in currTime.lower() else currTime[:currTime.lower().find("h")])
-getMins = lambda currTime: int(0 if "h" not in currTime.lower() else currTime[currTime.lower().find("h") + 1:])
+
+
+def getHrs(currTime):
+    try:
+        return int((currTime or 0) if "h" not in currTime.lower() else currTime[:currTime.lower().find("h")])
+    except:
+        return 1
+
+
+def getMins(currTime):
+    try:
+        return int(0 if "h" not in currTime.lower() else currTime[currTime.lower().find("h") + 1:])
+    except:
+        return 0
 
 
 def replaceAliasVars(argSet, message):
@@ -262,6 +274,7 @@ def loc(argSet, *_):  # Tells the chat you've gone somewhere
 
 def Loc(argSet, time="1", location="GDS"):
     chat = getChatName(argSet[3])
+    time=time if len(time)!=0 else "1"
     atLoc[chat] = atLoc[chat] if chat in atLoc else {}
     # Update the time
     name = purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2]))
