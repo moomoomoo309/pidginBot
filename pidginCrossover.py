@@ -72,14 +72,14 @@ aliasVars = [
 ]
 
 
-def getHrs(currTime):
+def getHrs(currTime):  # Gets hours in the format #h#
     try:
         return int((currTime or 0) if "h" not in currTime.lower() else currTime[:currTime.lower().find("h")])
     except:
         return 1
 
 
-def getMins(currTime):
+def getMins(currTime):  # Gets minutes in the format #h#
     try:
         return int(0 if "h" not in currTime.lower() else currTime[currTime.lower().find("h") + 1:])
     except:
@@ -267,14 +267,14 @@ def Mimic(argSet, user=None, firstWordOfCmd=None, *_):  # Runs a command as a di
 
 def loc(argSet, *_):  # Tells the chat you've gone somewhere
     time = argSet[2][len(commandDelimiter) + 4:argSet[2].find(" ", len(commandDelimiter) + 4)]
-    location = argSet[2][argSet[2].find(" ", len(commandDelimiter) + 4) + 2:] if len(argSet[2]) > len(
+    location = argSet[2][argSet[2].find(" ", len(commandDelimiter) + 4) + 1:] if len(argSet[2]) > len(
         commandDelimiter) + 4 else "GDS"
     Loc(argSet, time, location)
 
 
 def Loc(argSet, time="1", location="GDS"):
     chat = getChatName(argSet[3])
-    time=time if len(time)!=0 else "1"
+    time = time if len(time) != 0 else "1"
     atLoc[chat] = atLoc[chat] if chat in atLoc else {}
     # Update the time
     name = purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2]))
@@ -304,7 +304,7 @@ def leftLoc(argSet, *_):
     chat = getChatName(argSet[3])
     atLoc[chat] = atLoc[chat] if chat in atLoc else {}
     thisLoc = atLoc[chat][purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2]))]
-    thisLoc[0] = now() - timedelta(hours=2)  # Set the last visit time to now minus two hours.
+    thisLoc[0] = datetime(1, 1, 1, 1, 1, 1, 1)
     simpleReply(argSet,
         "{} left {}.".format(getNameFromArgs(*argSet[:2]), thisLoc[1]))
     updateFile("atLoc.json", atLoc)
