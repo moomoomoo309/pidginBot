@@ -22,16 +22,14 @@ lastMessageTime = now()
 
 
 def readFile(path):
-    fileHandle = open(path, mode="r")
-    out = None
-    strFile = fileHandle.read(-1)
-    if out is None and strFile != "":
-        try:
-            out = loads(strFile)  # json.loads is WAY faster than ast.literal_eval!
-        except ValueError:
-            pass
-
-    fileHandle.close()  # No need to keep the file handle open unnecessarily.
+    with open(path, mode="r") as fileHandle:  # With is nice and clean.
+        out = None
+        strFile = fileHandle.read(-1)
+        if out is None and strFile != "":
+            try:
+                out = loads(strFile)  # json.loads is WAY faster than ast.literal_eval!
+            except ValueError:
+                pass
     return out
 
 
@@ -44,17 +42,16 @@ def getChats():
     for i in rawChats:
         info = (purple.PurpleConversationGetAccount(i), purple.PurpleConversationGetTitle(i))
         if info not in chatIDs or i > chatIDs[info] and (
-                    (purple.PurpleConversationGetType(i) == 2 and i <= 10000) or purple.PurpleConversationGetType(
-                    i) != 2):
+                    (purple.PurpleConversationGetType(i) == 2 and i <= 10000) or
+                        purple.PurpleConversationGetType(i) != 2):
             chatIDs[info] = i
     return chatIDs.values()
 
 
 def updateFile(path, value):
-    openFile = open(path, mode="w")  # To update a file
-    openFile.write(dumps(value, openFile, indent=4,
-        default=lambda o: o.strftime('%a, %d %b %Y %H:%M:%S UTC') if isinstance(o, datetime) else None))
-    openFile.close()
+    with open(path, mode="w") as openFile:  # To update a file
+        openFile.write(dumps(value, openFile, indent=4,
+            default=lambda o: o.strftime('%a, %d %b %Y %H:%M:%S UTC') if isinstance(o, datetime) else None))
 
 
 # Read files for persistent values.
@@ -219,8 +216,7 @@ getChatName = lambda chatId: purple.PurpleConversationGetTitle(chatId)
 
 def getFullUsername(argSet, partialName):  # Returns a user's alias given their partial name.
     users = getUserFromName(argSet, partialName)
-    return [getNameFromArgs(argSet[0], buddy) for buddy in
-        users] if users is not None else None
+    return [getNameFromArgs(argSet[0], buddy) for buddy in users] if users is not None else None
 
 
 def getUserFromName(argSet, partialName):  # Returns the "name" of a user given their partial name.
@@ -341,12 +337,13 @@ def AtLoc(argSet, *_):
 dice = [u"0⃣", u"1⃣", u"2⃣", u"3⃣", u"4⃣", u"5⃣", u"6⃣", u"7⃣", u"8⃣", u"9⃣️⃣️"]  # 1-9 in emoji form
 
 
-def diceRoll(argSet, diceStr="", *_):  # Returns a dice roll of the given dice.
-    def diceify(s):  # Replaces numbers with emojis
-        for i in range(len(dice)):
-            s = s.replace(u"" + str(i), dice[i])
-        return s
+def numToEmoji(s):  # Replaces numbers with emojis
+    for i in range(len(dice)):
+        s = s.replace(u"" + str(i), dice[i])
+    return s
 
+
+def diceRoll(argSet, diceStr="", *_):  # Returns a dice roll of the given dice.
     numDice, numSides = 1, 6  # Defaults to 1d6
     if "d" in diceStr.lower():
         numDice, numSides = int(diceStr[:diceStr.lower().find("d")]), int(diceStr[diceStr.lower().find("d") + 1:])
@@ -354,7 +351,7 @@ def diceRoll(argSet, diceStr="", *_):  # Returns a dice roll of the given dice.
         numDice = int(diceStr)
     rolls = [randint(1, numSides) for _ in range(numDice)]  # Roll the dice
     simpleReply(argSet,
-        diceify(u"".join(str(s) + ", " for s in rolls) + u"Sum={}, Max={}, Min={}".format(sum(rolls), max(rolls),
+        numToEmoji(u"".join(str(s) + ", " for s in rolls) + u"Sum={}, Max={}, Min={}".format(sum(rolls), max(rolls),
             min(rolls))))
 
 
