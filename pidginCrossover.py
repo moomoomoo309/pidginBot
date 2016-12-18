@@ -4,17 +4,17 @@
 # emoji, humanize and PyGObject are dependencies. "pip install emoji pygobject humanize --upgrade" will do that for you.
 from __future__ import print_function
 
-from sys import exit
 from datetime import datetime, timedelta
+from json import dumps, loads
 from math import ceil
 from random import randint
-from humanize import naturaldelta
+from sys import exit
 
-from gi.repository import GObject
-from pydbus import SessionBus
 from emoji import demojize, emojize  # This dependency is 👍
 from emoji.unicode_codes import UNICODE_EMOJI as emojis
-from json import dumps, loads
+from gi.repository import GObject
+from humanize import naturaldelta
+from pydbus import SessionBus
 
 commandDelimiter = "!"  # What character(s) the commands should start with.
 now = datetime.now
@@ -102,10 +102,10 @@ def getPun(argSet, punFilter):  # Gets a random pun, or a random pun that satisf
         "Does not punpute! Random Pun: " + puns[chat][randint(0, len(puns) - 1)])
 
 
-def Help(argSet, page=(), *_):  # Returns help text for the given command, or a page listing all commands.
+def Help(argSet, page="", *_):  # Returns help text for the given command, or a page listing all commands.
     iteratableCommands = commands.keys()  # A tuple containing all of the keys in iteratableCommands.
     commandsPerPage = 10  # How many commands to show per page.
-    cmd = page[len(commandDelimiter):]
+    cmd = page[len(commandDelimiter):] if page.startswith(commandDelimiter) else page
     if cmd and cmd.lower() in helpText:  # If the help text for a given command was asked for
         simpleReply(argSet, helpText[cmd.lower()])
     elif not page or (page and page.isdigit()):  # If a page number was asked for
@@ -190,6 +190,11 @@ def addAlias(argSet, *_):  # Adds an alias for a command, or replies what an ali
     if str(command) in commands:
         simpleReply(argSet, u"That name is already used by a command!")
         return
+    cmd = argsMsg[(len(commandDelimiter) if argsMsg.startswith(commandDelimiter) else 0):(
+        " " in argsMsg and argsMsg.find(" ") or len(argsMsg))]
+    if cmd not in commands:
+        simpleReply(argSet, u"{}{} is not a command!".format(commandDelimiter, cmd))
+        return
     aliases[chat][str(command)] = (argsMsg, args)
     simpleReply(argSet, u"\"{}\" bound to \"{}\".".format(commandDelimiter + command, commandDelimiter + argsMsg))
     updateFile("Aliases.json", aliases)
@@ -215,8 +220,13 @@ getChatName = lambda chatId: purple.PurpleConversationGetTitle(chatId)
 
 
 def getFullUsername(argSet, partialName):  # Returns a user's alias given their partial name.
-    users = getUserFromName(argSet, partialName)
-    return [getNameFromArgs(argSet[0], buddy) for buddy in users] if users is not None else None
+    buddies = [purple.PurpleConvChatCbGetName(user) for user in
+        purple.PurpleConvChatGetUsers(purple.PurpleConvChat(argSet[3]))][:-1]
+    names = [getNameFromArgs(argSet[0], buddy) for buddy in buddies]
+    # Check the beginning first, otherwise, check if the partialname is somewhere in the name.
+    name = (next((names[i] for i in range(len(names)) if names[i][0:len(partialName)].lower() == partialName.lower()),
+        None) or next((names[i] for i in range(len(names)) if partialName.lower() in names[i].lower()), None))
+    return u"" + name if name is not None else None
 
 
 def getUserFromName(argSet, partialName):  # Returns the "name" of a user given their partial name.
@@ -224,12 +234,13 @@ def getUserFromName(argSet, partialName):  # Returns the "name" of a user given 
         purple.PurpleConvChatGetUsers(purple.PurpleConvChat(argSet[3]))][:-1]
     names = [getNameFromArgs(argSet[0], buddy) for buddy in buddies]
     # Check the beginning first, otherwise, check if the partialname is somewhere in the name.
-    return next((buddies[i] for i in range(len(names)) if names[i][0:len(partialName)].lower() == partialName.lower()),
-        None) or next((buddies[i] for i in range(len(names)) if partialName.lower() in names[i].lower()), None)
+    name = (next((buddies[i] for i in range(len(names)) if names[i][0:len(partialName)].lower() == partialName.lower()),
+        None) or next((buddies[i] for i in range(len(names)) if partialName.lower() in names[i].lower()), None))
+    return u"" + name if name is not None else None
 
 
 def runCommand(argSet, command, *args):  # Runs the command given the argSet and the command it's trying to run.
-    command = command or argSet[2][:argSet[2].find(" ")]
+    command = (command or argSet[2][:argSet[2].find(" ")]).lower()
     chat = getChatName(argSet[3])
     aliases[chat] = aliases[chat] if chat in aliases else {}
     if command in commands:
@@ -240,9 +251,14 @@ def runCommand(argSet, command, *args):  # Runs the command given the argSet and
         command = message[len(commandDelimiter):message.find(" ") if " " in message else len(message)].lower()
         message = message[:message.lower().find(command)] + command + message[
         message.lower().find(command) + len(command):]
-        newMsg = replaceAliasVars(argSet, message).replace(command, aliases[chat][command][0])
+        newMsg = replaceAliasVars(argSet, (message + (
+        u" ".join(tuple(args)) if len(tuple(aliases[chat][command][1][len(commandDelimiter):])) > 0 else u"")).replace(
+            command,
+            aliases[chat][command][0]))
+        print(newMsg, tuple(args))
         commands[aliases[chat][command][1][0]]((argSet[0], argSet[1], newMsg, argSet[3], argSet[4]), *(
-            tuple(args) + tuple(aliases[chat][command][1][len(commandDelimiter):])))  # Run the alias's command
+            tuple(aliases[chat][command][1][len(commandDelimiter):]) + (tuple(args) if len(tuple(
+                aliases[chat][command][1][len(commandDelimiter):])) > 0 else ())))  # Run the alias's command
         return True
     return False
 
@@ -299,11 +315,15 @@ def Loc(argSet, time="1", location="GDS"):
 def leftLoc(argSet, *_):
     chat = getChatName(argSet[3])
     atLoc[chat] = atLoc[chat] if chat in atLoc else {}
-    thisLoc = atLoc[chat][purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2]))]
-    thisLoc[0] = datetime(1, 1, 1, 1, 1, 1, 1)
-    simpleReply(argSet,
-        "{} left {}.".format(getNameFromArgs(*argSet[:2]), thisLoc[1]))
-    updateFile("atLoc.json", atLoc)
+    name = getNameFromArgs(*argSet[:2])
+    if name in atLoc[chat]:
+        thisLoc = atLoc[chat][name]
+        thisLoc[0] = datetime(1901, 1, 1, 1, 1, 1, 1)
+        simpleReply(argSet,
+            "{} left {}.".format(name, thisLoc[1]))
+        updateFile("atLoc.json", atLoc)
+    else:
+        simpleReply(argSet, "{} isn't anywhere!".format(name))
 
 
 def AtLoc(argSet, *_):
@@ -339,7 +359,7 @@ dice = [u"0⃣", u"1⃣", u"2⃣", u"3⃣", u"4⃣", u"5⃣", u"6⃣", u"7⃣", 
 
 def numToEmoji(s):  # Replaces numbers with emojis
     for i in range(len(dice)):
-        s = s.replace(u"" + str(i), dice[i])
+        s = s.replace(u"" + str(i), dice[i])  # Force unicode strings for Python 2 and Python 3.
     return s
 
 
@@ -355,6 +375,21 @@ def diceRoll(argSet, diceStr="", *_):  # Returns a dice roll of the given dice.
             min(rolls))))
 
 
+def to(argSet, *args):
+    user = args[-1]
+    name = getFullUsername(argSet, user)
+    if name is not None:
+        print(argSet[2][len(commandDelimiter) + 3:].find(u" "))
+        simpleReply(argSet,
+            replaceAliasVars(argSet, argSet[2][len(commandDelimiter) + 3:argSet[2].rfind(" ")]).replace(u"%target",
+                name))
+    else:
+        simpleReply(argSet, "No user containing {} found.".format(user))
+
+
+getCommands = lambda argSet: "Valid Commands: {}, Valid Aliases: {}".format(str(sorted(commands.keys()))[1:-1],
+    str(sorted(aliases[getChatName(argSet[3])].keys()))[1:-1].replace("u'", "'"))
+
 commands = {  # A dict containing the functions to run when a given command is entered.
     "help": Help,
     "ping": lambda argSet, *_: simpleReply(argSet, u"Pong!"),
@@ -362,7 +397,8 @@ commands = {  # A dict containing the functions to run when a given command is e
         str([u"{} ({})".format(purple.PurpleConversationGetTitle(conv), conv) for conv in getChats()])[1:-1].replace(
             "u'", "'")),
     "args": lambda argSet, *_: simpleReply(argSet, str(argSet)),
-    "echo": lambda argSet, *_: simpleReply(argSet, argSet[2][argSet[2].find(u"echo") + 4 + len(commandDelimiter):]),
+    "echo": lambda argSet, *_: simpleReply(argSet,
+        argSet[2][argSet[2].lower().find(u"echo") + 4 + len(commandDelimiter):]),
     "exit": lambda *_: exit(37),
     "msg": lambda argSet, msg="", *_: sendMessage(argSet[-2], getConvFromPartialName(msg), [],
         getNameFromArgs(*argSet[:2]) + ": " + argSet[2][
@@ -393,7 +429,9 @@ commands = {  # A dict containing the functions to run when a given command is e
     "atloc": AtLoc,
     "leftloc": leftLoc,
     "diceroll": diceRoll,
-    "restart": lambda *_: exit(0)
+    "restart": lambda *_: exit(0),
+    "commands": lambda argSet, *_: simpleReply(argSet, getCommands(argSet)),
+    "to": to
 }
 
 helpText = {  # The help text for each command.
@@ -424,7 +462,10 @@ helpText = {  # The help text for each command.
     "atloc": "Replies with who's said they're somewhere within the last hour and where they are.",
     "leftloc": "Tells the chat you've left somewhere.",
     "diceroll": "Rolls the specified number of dice, returning the min, max, and sum of the rolls. 1d6 by default.",
-    "restart": "Restarts the bot."
+    "restart": "Restarts the bot.",
+    "commands": "Lists all of the commands.",
+    "to": "Sends a message with the provided person as a 'target'. Mainly used for aliases.",
+    "aliasvars": "%sendername, %botname, %chattitle, %chatname"
 }
 
 
@@ -472,11 +513,10 @@ def sendMessage(sending, receiving, nick, message):  # Sends a message on the gi
     sendTitle = purple.PurpleConversationGetTitle(sending)
     receiveTitle = purple.PurpleConversationGetTitle(receiving)
     try:  # Logging errors should not break things.
+        # Removes emojis from messages, not all consoles support emoji, and not all files like emojis written to them.
         log(demojize(u"[{}] Sent \"{}\" from {} ({}) to {} ({}).".format(now().isoformat(),
             (nick + ": " + message if nick else message),
             sendTitle, sending, receiveTitle, conv)))  # Sent "message" from chat 1 (chat ID) to chat 2 (chat ID).
-        # Removes emojis from messages, not all consoles support emoji, and not all files like emojis written to them.
-
         logFile.flush()  # Update the log since it's been written to.
     except UnicodeError:
         pass
@@ -511,9 +551,8 @@ def messageListener(account, sender, message, conversation, flags):
         args = message.split(" ")[1:]
         argSet = (account, sender, message, conversation, flags)
         if not runCommand(argSet, command.lower(), *args):
-            simpleReply(argSet, u"Command/alias \"{}\" not found. Valid commands: {} Valid aliases: {}".format(
-                command, str(sorted(commands.keys()))[1:-1],
-                str(sorted(aliases[getChatName(argSet[3])].keys()))[1:-1].replace("u'", "'")))
+            simpleReply(argSet, u"Command/alias \"{}\" not found. {}".format(
+                command, getCommands(argSet)))
         return  # Commands are not to be sent out to other chats!
 
     # If the message was not a command, continue.
