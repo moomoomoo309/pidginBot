@@ -257,8 +257,7 @@ def runCommand(argSet, command, *args):  # Runs the command given the argSet and
             aliases[chat][command][0]))
         print(newMsg, tuple(args))
         commands[aliases[chat][command][1][0]]((argSet[0], argSet[1], newMsg, argSet[3], argSet[4]), *(
-            tuple(aliases[chat][command][1][len(commandDelimiter):]) + (tuple(args) if len(tuple(
-                aliases[chat][command][1][len(commandDelimiter):])) > 0 else ())))  # Run the alias's command
+            (tuple(args) if len(tuple(aliases[chat][command][1][len(commandDelimiter):])) > 0 else ())))  # Run the alias's command
         return True
     return False
 
@@ -499,7 +498,7 @@ def sendMessage(sending, receiving, nick, message):  # Sends a message on the gi
         return
 
     if message[0:len(commandDelimiter)] == commandDelimiter:  # Do not send out commands! No! Bad!
-        message = ("_" if commandDelimiter[0] != "_" else "__") + message
+        message = ("_" if commandDelimiter[0] != "_" else " ") + message
 
     # Actually send the messages out.
     if purple.PurpleConversationGetType(receiving) == 2:  # 2 means a group chat.
