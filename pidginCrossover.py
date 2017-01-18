@@ -22,6 +22,7 @@ commandDelimiter = "!"  # What character(s) the commands should start with.
 now = datetime.now
 lastMessageTime = now()
 parser = datetimeParser()
+naturalTime = lambda time: naturaltime(time+timedelta(seconds=1))
 
 
 def readFile(path):
@@ -370,7 +371,7 @@ def scheduleEvent(argSet, *args):
     newArgset[2] = cmdStr
     scheduledEvents.append((getTime(timeStr), newArgset))
     updateFile("scheduledEvents.json", scheduledEvents)
-    simpleReply(argSet, "\"{}\" scheduled to run at {}.".format(cmdStr, naturaltime(getTime(timeStr))))
+    simpleReply(argSet, "\"{}\" scheduled to run at {}.".format(cmdStr, naturalTime(getTime(timeStr))))
 
 
 dice = [u"0⃣", u"1⃣", u"2⃣", u"3⃣", u"4⃣", u"5⃣", u"6⃣", u"7⃣", u"8⃣", u"9⃣️⃣️"]  # 1-9 in emoji form
@@ -395,6 +396,9 @@ def diceRoll(argSet, diceStr="", *_):  # Returns a dice roll of the given dice.
 
 
 def to(argSet, *args):
+    if len(args)==0:
+        simpleReply(argSet, "You need to provide some arguments!")
+        return
     user = args[-1]
     name = getFullUsername(argSet, user)
     if name is not None:
@@ -611,8 +615,12 @@ def periodicLoop():  # Used for any tasks that may need to run in the background
             eventTime = datetime.strptime(event[0], '%a, %d %b %Y %H:%M:%S UTC')
         else:
             eventTime = event[0]
-        if timedelta() < now() - eventTime < timedelta(hours=1):
-            messageListener(*event[1])
+        if timedelta() < now() - eventTime:
+            if now() - eventTime < timedelta(minutes=5):
+                try:
+                    messageListener(*event[1])
+                except:
+                    pass
             scheduledEvents.remove(event)
             eventRemoved = True
     if eventRemoved:
