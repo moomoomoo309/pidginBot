@@ -12,13 +12,16 @@ from sys import exit
 
 from emoji import demojize, emojize  # This dependency is 👍
 from emoji.unicode_codes import UNICODE_EMOJI as emojis
-from gi.repository import GObject
-from humanize import naturaldelta
+from gi.repository import GObject, GLib
+from humanize import naturaldelta, naturaltime
 from pydbus import SessionBus
+from parsedatetime import Calendar as datetimeParser
+from time import sleep, strptime
 
 commandDelimiter = "!"  # What character(s) the commands should start with.
 now = datetime.now
 lastMessageTime = now()
+parser = datetimeParser()
 
 
 def readFile(path):
@@ -55,12 +58,14 @@ def updateFile(path, value):
 
 
 # Read files for persistent values.
-messageLinks, puns, aliases, atLoc = readFiles("messageLinks.json", "Puns.json", "Aliases.json", "atLoc.json")
+messageLinks, puns, aliases, atLoc, scheduledEvents = readFiles("messageLinks.json", "Puns.json", "Aliases.json",
+    "atLoc.json", "scheduledEvents.json")
 
 messageLinks = messageLinks or {}
 puns = puns or {}
 aliases = aliases or {}
 atLoc = atLoc or {}
+scheduledEvents = scheduledEvents or []
 aliasVars = [
     ("%sendername", lambda argSet: getNameFromArgs(*argSet[:2])),
     ("%botname", lambda argSet: purple.PurpleAccountGetAlias(argSet[0])),
@@ -69,18 +74,9 @@ aliasVars = [
 ]
 
 
-def getHrs(currTime):  # Gets hours in the format #h#
-    try:
-        return int((currTime or 0) if "h" not in currTime.lower() else currTime[:currTime.lower().find("h")])
-    except:
-        return 1
-
-
-def getMins(currTime):  # Gets minutes in the format #h#
-    try:
-        return int(0 if "h" not in currTime.lower() else currTime[currTime.lower().find("h") + 1:])
-    except:
-        return 0
+def getTime(currTime):
+    # type: (str) -> datetime
+    return parser.parseDT(currTime)[0]
 
 
 def replaceAliasVars(argSet, message):
@@ -163,7 +159,7 @@ def addPun(argSet, pun):  # Adds a pun to the pun list, then updates the file.
 def removePun(argSet, pun):  # Removes a pun from the pun list, then updates the file.
     chat = getChatName(argSet[3])
     puns[chat] = puns[chat] if chat in puns else []
-    fullPun = next((fullPun for fullPun in puns if str(pun) in fullPun), None)
+    fullPun = next((fullPun for fullPun in puns if str(pun) in puns[chat]), None)
     if fullPun is None:
         simpleReply(argSet, u"No pun found containing \"{}\".".format(pun))
         return
@@ -252,12 +248,14 @@ def runCommand(argSet, command, *args):  # Runs the command given the argSet and
         message = message[:message.lower().find(command)] + command + message[
         message.lower().find(command) + len(command):]
         newMsg = replaceAliasVars(argSet, (message + (
-        u" ".join(tuple(args)) if len(tuple(aliases[chat][command][1][len(commandDelimiter):])) > 0 else u"")).replace(
+            u" ".join(tuple(args)) if len(
+                tuple(aliases[chat][command][1][len(commandDelimiter):])) > 0 else u"")).replace(
             command,
             aliases[chat][command][0]))
         print(newMsg, tuple(args))
         commands[aliases[chat][command][1][0]]((argSet[0], argSet[1], newMsg, argSet[3], argSet[4]), *(
-            (tuple(args) if len(tuple(aliases[chat][command][1][len(commandDelimiter):])) > 0 else ())))  # Run the alias's command
+            (tuple(args) if len(
+                tuple(aliases[chat][command][1][len(commandDelimiter):])) > 0 else ())))  # Run the alias's command
         return True
     return False
 
@@ -283,31 +281,27 @@ def loc(argSet, *_):  # Tells the chat you've gone somewhere
     Loc(argSet, time, location)
 
 
-def Loc(argSet, time="1", location="GDS"):
+def Loc(argSet, time="in 30 minutes", location="GDS"):
     chat = getChatName(argSet[3])
-    time = time if len(time) != 0 else "1"
+    time = time if len(time) != 0 else "in 30 minutes"
     atLoc[chat] = atLoc[chat] if chat in atLoc else {}
     # Update the time
     name = purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2]))
     atLoc[chat][name] = [now(), location, time]
 
-    time = time if len(time) > 0 else "1"
-    numHrs, numMins, appendMsg = 1, 0, ""
+    dateTime, appendMsg = None, ""
     try:
-        numHrs = getHrs(time)
-        numMins = getMins(time)
-    except ValueError:
+        dateTime = getTime(time)
+    except:
         appendMsg = time
-    numHrs = 1 if numHrs is not 0 and not numHrs else numHrs
-    numMins = 0 if numMins is not 0 and not numMins else numMins
     simpleReply(argSet,
-        "{} is going to {}{} for {}{}{}.".format(
+        "{} is going to {}{} for {}.".format(
             getNameFromArgs(*argSet[:2]),
             location,
             (" " + appendMsg if len(appendMsg) > 0 else ""),
-            naturaldelta(timedelta(hours=numHrs)) if numHrs != 0 else "",
-            " and " if numHrs != 0 and numMins != 0 else "",
-            naturaldelta(timedelta(minutes=numMins)) if bool(int(numMins)) else ""))
+            naturaldelta(now() - dateTime) if dateTime is not None else ""
+        )
+    )
     updateFile("atLoc.json", atLoc)
 
 
@@ -334,23 +328,49 @@ def AtLoc(argSet, *_):
         except:
             return now()
 
+    def toDelta(string):
+        if type(string) == timedelta:
+            if string > timedelta():
+                return string
+            else:
+                return timedelta(minutes=30)
+        try:
+            return strptime(string, "%H:%M:%S")
+        except:
+            return timedelta(minutes=30)
+
     location = argSet[2][len(commandDelimiter) + 6:] if " " in argSet[2] else "anywhere"
     chat = getChatName(argSet[3])
     atLoc[chat] = atLoc[chat] if chat in atLoc else {}
 
     # Filter out people who have been somewhere in the last hour
     lastHour = [name for name in atLoc[chat].keys() if
-        now() - toDate(atLoc[chat][name][0]) < timedelta(hours=getHrs(atLoc[chat][name][2]),
-            minutes=getMins(atLoc[chat][name][2])) and (atLoc[chat][name][1] == location or location == "anywhere")]
-    print([naturaldelta(now() - toDate(atLoc[chat][name][0])) for name in atLoc[chat].keys()])
+        now() - toDate(atLoc[chat][name][0]) < toDelta(atLoc[chat][name][2]) and (
+            atLoc[chat][name][1] == location or location == "anywhere")]
     # Write the names to a string.
     strPeopleAtLoc = u"".join([u"{} went to {} {} ago. ".format(
         n, atLoc[chat][n][1], naturaldelta(now() - toDate(atLoc[chat][n][0]))) for n in lastHour])
     if lastHour:
         simpleReply(argSet, strPeopleAtLoc)
-    else:  # If no one has been to GDS
+    else:  # If no one has been to a location
         simpleReply(argSet,
             "No one went {} in the last hour.".format(location if location == "anywhere" else "to " + location))
+
+
+def scheduleEvent(argSet, *args):
+    msg = argSet[2][len(commandDelimiter) + 9:]
+    timeStr, cmdStr = "", ""
+    if commandDelimiter in msg:
+        timeStr = msg[:msg.find(commandDelimiter) - 1]
+        cmdStr = msg[msg.find(commandDelimiter):]
+    else:
+        simpleReply(argSet, "You need a command to run, with the command delimiter (" + commandDelimiter + ").")
+        return
+    newArgset = list(argSet)
+    newArgset[2] = cmdStr
+    scheduledEvents.append((getTime(timeStr), newArgset))
+    updateFile("scheduledEvents.json", scheduledEvents)
+    simpleReply(argSet, "\"{}\" scheduled to run at {}.".format(cmdStr, naturaltime(getTime(timeStr))))
 
 
 dice = [u"0⃣", u"1⃣", u"2⃣", u"3⃣", u"4⃣", u"5⃣", u"6⃣", u"7⃣", u"8⃣", u"9⃣️⃣️"]  # 1-9 in emoji form
@@ -430,7 +450,8 @@ commands = {  # A dict containing the functions to run when a given command is e
     "diceroll": diceRoll,
     "restart": lambda *_: exit(0),
     "commands": lambda argSet, *_: simpleReply(argSet, getCommands(argSet)),
-    "to": to
+    "to": to,
+    "schedule": scheduleEvent
 }
 
 helpText = {  # The help text for each command.
@@ -464,7 +485,8 @@ helpText = {  # The help text for each command.
     "restart": "Restarts the bot.",
     "commands": "Lists all of the commands.",
     "to": "Sends a message with the provided person as a 'target'. Mainly used for aliases.",
-    "aliasvars": "%sendername, %botname, %chattitle, %chatname"
+    "aliasvars": "%sendername, %botname, %chattitle, %chatname",
+    "schedule": "Runs a command after the specified amount of time."
 }
 
 
@@ -580,4 +602,25 @@ purple.ReceivedChatMsg.connect(messageListener)
 
 purple.PurpleConversationsInit()
 
+
+def periodicLoop():  # Used for any tasks that may need to run in the background.
+    eventRemoved = False
+    for event in scheduledEvents:
+        eventTime = None
+        if isinstance(event[0],(str,unicode)):
+            eventTime = datetime.strptime(event[0], '%a, %d %b %Y %H:%M:%S UTC')
+        else:
+            eventTime = event[0]
+        if timedelta() < now() - eventTime < timedelta(hours=1):
+            messageListener(*event[1])
+            scheduledEvents.remove(event)
+            eventRemoved = True
+    if eventRemoved:
+        updateFile("scheduledEvents.json", scheduledEvents)
+    return True
+
+
+GObject.threads_init()
+GLib.threads_init()
+GLib.timeout_add_seconds(1, periodicLoop)
 GObject.MainLoop().run()

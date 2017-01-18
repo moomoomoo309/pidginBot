@@ -19,6 +19,8 @@ Dependencies:
 
 -humanize (pip install humanize)
 
+-parsedatetime (pip install parsedatetime)
+
 -Pidgin or Finch (sudo apt-get install pidgin or sudo apt-get install finch)
 
 
