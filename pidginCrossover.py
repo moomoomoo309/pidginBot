@@ -16,13 +16,14 @@ from gi.repository import GObject, GLib
 from humanize import naturaldelta, naturaltime
 from pydbus import SessionBus
 from parsedatetime import Calendar as datetimeParser
-from time import sleep, strptime
+from time import strptime
 
 commandDelimiter = "!"  # What character(s) the commands should start with.
 now = datetime.now
 lastMessageTime = now()
 parser = datetimeParser()
 naturalTime = lambda time: naturaltime(time+timedelta(seconds=1))
+naturalDelta = lambda time: naturaldelta(time-timedelta(seconds=1))
 
 
 def readFile(path):
@@ -253,7 +254,6 @@ def runCommand(argSet, command, *args):  # Runs the command given the argSet and
                 tuple(aliases[chat][command][1][len(commandDelimiter):])) > 0 else u"")).replace(
             command,
             aliases[chat][command][0]))
-        print(newMsg, tuple(args))
         commands[aliases[chat][command][1][0]]((argSet[0], argSet[1], newMsg, argSet[3], argSet[4]), *(
             (tuple(args) if len(
                 tuple(aliases[chat][command][1][len(commandDelimiter):])) > 0 else ())))  # Run the alias's command
@@ -282,9 +282,9 @@ def loc(argSet, *_):  # Tells the chat you've gone somewhere
     Loc(argSet, time, location)
 
 
-def Loc(argSet, time="in 30 minutes", location="GDS"):
+def Loc(argSet, time="30 minutes", location="GDS"):
     chat = getChatName(argSet[3])
-    time = time if len(time) != 0 else "in 30 minutes"
+    time = time if len(time) != 0 else "30 minutes"
     atLoc[chat] = atLoc[chat] if chat in atLoc else {}
     # Update the time
     name = purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2]))
@@ -300,7 +300,7 @@ def Loc(argSet, time="in 30 minutes", location="GDS"):
             getNameFromArgs(*argSet[:2]),
             location,
             (" " + appendMsg if len(appendMsg) > 0 else ""),
-            naturaldelta(now() - dateTime) if dateTime is not None else ""
+            naturalDelta(now() - dateTime) if dateTime is not None else ""
         )
     )
     updateFile("atLoc.json", atLoc)
@@ -350,7 +350,7 @@ def AtLoc(argSet, *_):
             atLoc[chat][name][1] == location or location == "anywhere")]
     # Write the names to a string.
     strPeopleAtLoc = u"".join([u"{} went to {} {} ago. ".format(
-        n, atLoc[chat][n][1], naturaldelta(now() - toDate(atLoc[chat][n][0]))) for n in lastHour])
+        n, atLoc[chat][n][1], naturalDelta(now() - toDate(atLoc[chat][n][0]))) for n in lastHour])
     if lastHour:
         simpleReply(argSet, strPeopleAtLoc)
     else:  # If no one has been to a location
@@ -360,7 +360,6 @@ def AtLoc(argSet, *_):
 
 def scheduleEvent(argSet, *args):
     msg = argSet[2][len(commandDelimiter) + 9:]
-    timeStr, cmdStr = "", ""
     if commandDelimiter in msg:
         timeStr = msg[:msg.find(commandDelimiter) - 1]
         cmdStr = msg[msg.find(commandDelimiter):]
@@ -402,7 +401,6 @@ def to(argSet, *args):
     user = args[-1]
     name = getFullUsername(argSet, user)
     if name is not None:
-        print(argSet[2][len(commandDelimiter) + 3:].find(u" "))
         simpleReply(argSet,
             replaceAliasVars(argSet, argSet[2][len(commandDelimiter) + 3:argSet[2].rfind(" ")]).replace(u"%target",
                 name))
