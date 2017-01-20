@@ -9,7 +9,6 @@ from json import dumps, loads
 from math import ceil
 from random import randint
 from sys import exit
-
 from emoji import demojize, emojize  # This dependency is 👍
 from emoji.unicode_codes import UNICODE_EMOJI as emojis
 from gi.repository import GObject, GLib
@@ -22,8 +21,13 @@ from time import strptime
 # Utility Functions:
 # -----------------------------------------------
 def readFile(path):
-    # type: (unicode) -> dict
-    """Reads, then parses the file at the given path as json."""
+    """
+    Reads, then parses the file at the given path as json.
+
+    @param path: The file path of the file.
+    @type path: unicode
+    @return: The file parsed as json.
+    """
     with open(path, mode="r") as fileHandle:  # With is nice and clean.
         out = None
         strFile = fileHandle.read(-1)
@@ -39,8 +43,11 @@ readFiles = lambda *paths: [readFile(path) for path in paths]  #
 
 
 def getChats():
-    # type: () -> list
-    """Returns all valid chat ids, filtering out any duplicate or invalid chats."""
+    """
+    Returns all valid chat ids, filtering out any duplicate or invalid chats.
+
+    @return: All valid chat ids, filtering out any duplicate or invalid chats.
+    """
     rawChats = purple.PurpleGetConversations()
     chatIDs = dict()
     for i in rawChats:
@@ -53,8 +60,14 @@ def getChats():
 
 
 def updateFile(path, value):
-    # type: (unicode, unicode) -> None
-    """Replaces the contents of the file at the given path with the given value."""
+    """
+    Replaces the contents of the file at the given path with the given value.
+
+    @param path: The file path of the file to overwrite.
+    @type path: unicode
+    @param value: The unicode string to overwrite the file with.
+    @type value: unicode
+    """
     with open(path, mode="w") as openFile:  # To update a file
         openFile.write(dumps(value, openFile, indent=4,
             default=lambda o: o.strftime('%a, %d %b %Y %H:%M:%S UTC') if isinstance(o, datetime) else None))
@@ -70,8 +83,14 @@ getChatName = lambda chatId: purple.PurpleConversationGetTitle(chatId)  # Gets t
 
 
 def getTime(currTime):
-    # type: (unicode) -> datetime
-    """Given a natural time string, such as "in 30 minutes", returns that time as a datetime object."""
+    """
+    Given a natural time string, such as "in 30 minutes", returns that time as a datetime object.
+
+    @param currTime: A natural time string, such as "in 30 minutes" or "7 PM".
+    @type currTime: unicode
+    @return: The natural time as a datetime object.
+    @rtype: unicode
+    """
     return parser.parseDT(currTime)[0]
 
 
@@ -81,8 +100,14 @@ getCommands = lambda argSet: u"Valid Commands: {}, Valid Aliases: {}".format(str
 
 
 def getFullConvName(partialName):
-    # type: (unicode) -> unicode
-    """Returns a full conversation title given a partial title."""
+    """
+    Returns a full conversation title given a partial title.
+
+    @param partialName: The incomplete name of the conversation.
+    @type partialName: unicode
+    @return: The conversation ID.
+    @rtype: int
+    """
     conversations = [purple.PurpleConversationGetTitle(conv) for conv in getChats()]
     # Check the beginning first, if none start with the partial name, find it in there somewhere.
     return next((i for i in conversations if i[0:len(partialName)] == partialName), None) or next(
@@ -130,8 +155,16 @@ aliasVars = [  # Replace the string with the result from the lambda below.
 
 
 def replaceAliasVars(argSet, message):
-    # type: (tuple, unicode) -> unicode
-    """Given the original message, replaces any alias vars (see above) with their proper values."""
+    """
+    Given the original message, replaces any alias vars (see above) with their proper values.
+
+    @param argSet: The set of values passed in to messageListener.
+    @type argSet: tuple
+    @param message: The message to replace. Will not use the message in argSet.
+    @type message: unicode
+    @return The message, with all of the alias variables replaced.
+    @rtype unicode
+    """
     newMsg = message  # Don't touch the original
     for i in aliasVars:
         newMsg = newMsg.replace(i[0], i[1](argSet))
@@ -139,8 +172,16 @@ def replaceAliasVars(argSet, message):
 
 
 def getPun(argSet, punFilter):
-    # type: (tuple, unicode) -> unicode
-    """Gets a random pun, or a random pun that satisfies the provided filter."""
+    """
+    Gets a random pun, or a random pun that satisfies the provided filter.
+
+    @param argSet: The set of values passed in to messageListener.
+    @type argSet: tuple
+    @param punFilter: A string filtering the puns out.
+    @type punFilter: unicode
+    @return: A random pun from puns.json.
+    @rtype unicode
+    """
     chat = getChatName(argSet[3])
     puns[chat] = puns[chat] if chat in puns else []
     if len(puns[chat]) == 0:
@@ -152,9 +193,15 @@ def getPun(argSet, punFilter):
         u"Does not punpute! Random Pun: " + puns[chat][randint(0, len(puns) - 1)])
 
 
-def Help(argSet, page="", *_):
-    # type: (tuple, unicode)->None
-    """Returns help text for the given command, or a page listing all commands."""
+def Help(argSet, page=u"", *_):
+    """
+    Returns help text for the given command, or a page listing all commands.
+
+    @param argSet: The set of values passed in to messageListener.
+    @type argSet: tuple
+    @param page: The page number it should be on, as a unicode string.
+    @type page: unicode
+    """
     iteratableCommands = commands.keys()  # A tuple containing all of the keys in iteratableCommands.
     commandsPerPage = 10  # How many commands to show per page.
     cmd = page[len(commandDelimiter):] if page.startswith(commandDelimiter) else page
@@ -174,8 +221,16 @@ def Help(argSet, page="", *_):
 
 
 def Link(argSet, chat, *chats):
-    # type: (tuple, unicode, tuple)->None
-    """Links chats to chat. Supports partial names."""
+    """
+    Links chats to chat. Supports partial names.
+
+    @param argSet: The set of values passed in to messageListener.
+    @type argSet: tuple
+    @param chat: The partial name of the chat to link the current chat to.
+    @type chat: unicode
+    @param chats: A list of all of the chats available.
+    @type chats: tuple
+    """
     fullChatName = getFullConvName(chat)
     fullChatNames = [getFullConvName(chat) for chat in chats]
     if fullChatName in messageLinks:
@@ -189,8 +244,16 @@ def Link(argSet, chat, *chats):
 
 
 def Unlink(argSet, chat, *chats):
-    # type: (tuple, unicode, tuple)->None
-    """Unlinks chats from chat. Supports partial names."""
+    """
+    Unlinks chats from chat. Supports partial names.
+
+    @param argSet: The set of values passed in to messageListener.
+    @type argSet: tuple
+    @param chat: The partial name of the chat to unlink from the current chat.
+    @type chat: unicode
+    @param chats: A list of all of the chats available.
+    @type chats: tuple
+    """
     fullChatName = getFullConvName(chat)
     removedChats = []
     if fullChatName not in messageLinks:  # If you wanted a chat that doesn't exist, just return.
@@ -209,8 +272,14 @@ def Unlink(argSet, chat, *chats):
 
 
 def addPun(argSet, pun):
-    # type: (tuple, unicode)->None
-    """Adds a pun to the pun list, then updates the file."""
+    """
+    Adds a pun to the pun list, then updates the file.
+
+    @param argSet: The set of values passed in to messageListener.
+    @type argSet: tuple
+    @param pun: The pun to add to the pun list.
+    @type pun: unicode***********************************************************************************-***
+    """
     chat = getChatName(argSet[3])
     puns[chat] = puns[chat] if chat in puns else []
     puns[chat].append(str(pun))
@@ -219,8 +288,14 @@ def addPun(argSet, pun):
 
 
 def removePun(argSet, pun):
-    # type: (tuple, unicode)->None
-    """Removes a pun from the pun list, then updates the file."""
+    """
+    Removes a pun from the pun list, then updates the file.
+
+    @param argSet: The set of values passed in to messageListener.
+    @type argSet: tuple
+    @param pun: The pun to remove from the pun list.
+    @type pun: unicode
+    """
     chat = getChatName(argSet[3])
     puns[chat] = puns[chat] if chat in puns else []
     fullPun = next((fullPun for fullPun in puns if str(pun) in puns[chat]), None)
@@ -233,8 +308,12 @@ def removePun(argSet, pun):
 
 
 def addAlias(argSet, *_):
-    # type: (tuple)->None
-    """Adds an alias for a command, or replies what an alias runs."""
+    """
+    Adds an alias for a command, or replies what an alias runs.
+
+    @param argSet: The set of values passed in to messageListener.
+    @type argSet: tuple
+    """
     chat = getChatName(argSet[3])
     aliases[chat] = aliases[chat] if chat in aliases else {}
     message = argSet[2][7 + len(commandDelimiter):]
@@ -262,9 +341,15 @@ def addAlias(argSet, *_):
     updateFile(u"Aliases.json", aliases)
 
 
-def removeAlias(argSet, alias=(), *_):
-    # type: (tuple, tuple)->None
-    """Removes an alias to a command."""
+def removeAlias(argSet, alias=u"", *_):
+    """
+    Removes an alias to a command.
+
+    @param argSet: The set of values passed in to messageListener.
+    @type argSet: tuple
+    @param alias: The alias for the command.
+    @type alias: unicode
+    """
     chat = getChatName(argSet[3])
     aliases[chat] = aliases[chat] if chat in aliases else {}
     if not alias:
@@ -280,8 +365,16 @@ def removeAlias(argSet, alias=(), *_):
 
 
 def getFullUsername(argSet, partialName):
-    # type: (tuple, unicode) -> unicode
-    """Returns a user's alias given their partial name."""
+    """
+    Returns a user's alias given their partial name.
+
+    @param argSet: The set of values passed in to messageListener.
+    @type argSet: tuple
+    @param partialName: The partial name of a user.
+    @type partialName: unicode
+    @return: A user's alias.
+    @rtype: unicode
+    """
     buddies = [purple.PurpleConvChatCbGetName(user) for user in
         purple.PurpleConvChatGetUsers(purple.PurpleConvChat(argSet[3]))][:-1]
     names = [getNameFromArgs(argSet[0], buddy) for buddy in buddies]
@@ -292,8 +385,16 @@ def getFullUsername(argSet, partialName):
 
 
 def getUserFromName(argSet, partialName):
-    # type: (tuple, unicode) -> unicode
-    """Returns the "name" of a user given their partial name."""
+    """
+    Returns the "name" of a user given their partial name.
+
+    @param argSet: The set of values passed in to messageListener.
+    @type argSet: tuple
+    @param partialName: The partial name of a user.
+    @type partialName: unicode
+    @return: A user's "name".
+    @rtype: unicode
+    """
     buddies = [purple.PurpleConvChatCbGetName(user) for user in
         purple.PurpleConvChatGetUsers(purple.PurpleConvChat(argSet[3]))][:-1]
     names = [getNameFromArgs(argSet[0], buddy) for buddy in buddies]
@@ -304,8 +405,16 @@ def getUserFromName(argSet, partialName):
 
 
 def runCommand(argSet, command, *args):
-    # type: (tuple, unicode, tuple) -> bool
-    """Runs the command given the argSet and the command it's trying to run."""
+    """
+    Runs the command given the argSet and the command it's trying to run.
+
+    @param argSet: The set of values passed in to messageListener.
+    @type argSet: tuple
+    @param command: The command to run.
+    @type command: unicode
+    @return: If the given command could be run, either as a command or an alias.
+    @rtype: unicode
+    """
     command = (command or argSet[2][:argSet[2].find(" ")]).lower()
     chat = getChatName(argSet[3])
     aliases[chat] = aliases[chat] if chat in aliases else {}
@@ -330,8 +439,16 @@ def runCommand(argSet, command, *args):
 
 
 def Mimic(argSet, user=None, firstWordOfCmd=None, *_):
-    # type: (tuple, unicode, unicode, tuple) -> None
-    """Runs a command as a different user."""
+    """
+    Runs a command as a different user.
+
+    @param argSet: The set of values passed in to messageListener.
+    @type argSet: tuple
+    @param user: The partial name of the user to mimic.
+    @type user: unicode
+    @param firstWordOfCmd: The first word of the command to run, for syntax checking.
+    @type firstWordOfCmd: unicode
+    """
     if user is None or firstWordOfCmd is None:
         simpleReply(argSet, u"You need to specify the user to mimic and the command to mimic!")
         return
@@ -346,8 +463,12 @@ def Mimic(argSet, user=None, firstWordOfCmd=None, *_):
 
 
 def loc(argSet, *_):
-    # type: (tuple, tuple) -> None
-    """Tells the chat you've gone somewhere."""
+    """
+    Tells the chat you've gone somewhere.
+
+    @param argSet: The set of values passed in to messageListener.
+    @type argSet: tuple
+    """
     time = argSet[2][len(commandDelimiter) + 4:argSet[2].find(" ", len(commandDelimiter) + 4)]
     location = argSet[2][argSet[2].find(" ", len(commandDelimiter) + 4) + 1:] if len(argSet[2]) > len(
         commandDelimiter) + 4 else u"GDS"
@@ -355,8 +476,16 @@ def loc(argSet, *_):
 
 
 def Loc(argSet, time=u"30 minutes", location=u"GDS"):
-    # type: (tuple, unicode, unicode) -> None
-    """Tells the chat you've gone somewhere. Has default values for ease of implementation."""
+    """
+    Tells the chat you've gone somewhere. Has default values for ease of implementation.
+
+    @param argSet: The set of values passed in to messageListener.
+    @type argSet: tuple
+    @param time: The time in which you will be staying at the location.
+    @type time: unicode
+    @param location: The location you're going to.
+    @type location: unicode
+    """
     chat = getChatName(argSet[3])
     time = time if len(time) != 0 else u"30 minutes"
     atLoc[chat] = atLoc[chat] if chat in atLoc else {}
@@ -381,8 +510,12 @@ def Loc(argSet, time=u"30 minutes", location=u"GDS"):
 
 
 def leftLoc(argSet, *_):
-    # type: (tuple, tuple) -> None
-    """Tells the chat you've left wherever you are."""
+    """
+    Tells the chat you've left wherever you are.
+
+    @param argSet: The set of values passed in to messageListener.
+    @type argSet: tuple
+    """
     chat = getChatName(argSet[3])
     atLoc[chat] = atLoc[chat] if chat in atLoc else {}
     name = getNameFromArgs(*argSet[:2])
@@ -397,8 +530,12 @@ def leftLoc(argSet, *_):
 
 
 def AtLoc(argSet, *_):
-    # type: (tuple, tuple) -> None
-    """Replies with who is at the given location, or where everyone is if the location is not specified."""
+    """
+    Replies with who is at the given location, or where everyone is if the location is not specified.
+
+    @param argSet: The set of values passed in to messageListener.
+    @type argSet: tuple
+    """
 
     def toDate(string):
         if type(string) == datetime:
@@ -438,8 +575,12 @@ def AtLoc(argSet, *_):
 
 
 def scheduleEvent(argSet, *_):
-    # type: (tuple, tuple) -> None
-    """Schedules the given command to run at the given time."""
+    """
+    Schedules the given command to run at the given time.
+
+    @param argSet: The set of values passed in to messageListener.
+    @type argSet: tuple
+    """
     msg = argSet[2][len(commandDelimiter) + 9:]
     if commandDelimiter in msg:
         timeStr = msg[:msg.find(commandDelimiter) - 1]
@@ -458,16 +599,28 @@ dice = [u"0⃣", u"1⃣", u"2⃣", u"3⃣", u"4⃣", u"5⃣", u"6⃣", u"7⃣", 
 
 
 def numToEmoji(s):
-    # type: (unicode) -> unicode
-    """Replaces numbers with emojis."""
+    """
+    Replaces numbers with emojis.
+
+    @param s: The string to replace the numbers of with emojis.
+    @type s: unicode
+    @return: The provided string with its numbers replaced with emojis.
+    @rtype: unicode
+    """
     for i in range(len(dice)):
         s = s.replace(u"" + str(i), dice[i])  # Force unicode strings for Python 2 and Python 3.
     return s
 
 
 def diceRoll(argSet, diceStr="", *_):
-    # type: (tuple, unicode, tuple) -> None
-    """Returns a dice roll of the given dice."""
+    """
+    Returns a dice roll of the given dice.
+
+    @param argSet: The set of values passed in to messageListener.
+    @type argSet: tuple
+    @param diceStr: The string used to specify the type of dice, in the form [numDice]d[diceSides]
+    @type diceStr: unicode
+    """
     numDice, numSides = 1, 6  # Defaults to 1d6
     if u"d" in diceStr.lower():
         numDice, numSides = int(diceStr[:diceStr.lower().find(u"d")]), int(diceStr[diceStr.lower().find(u"d") + 1:])
@@ -480,8 +633,12 @@ def diceRoll(argSet, diceStr="", *_):
 
 
 def to(argSet, *args):
-    # type: (tuple, tuple) -> None
-    """Provides %target as an alias variable, then replies with the parsed string."""
+    """
+    Provides %target as an alias variable, then replies with the parsed string.
+
+    @param argSet: The set of values passed in to messageListener.
+    @type argSet: tuple
+    """
     if len(args) == 0:
         simpleReply(argSet, u"You need to provide some arguments!")
         return
@@ -577,8 +734,18 @@ helpText = {  # The help text for each command.
 
 
 def sendMessage(sending, receiving, nick, message):
-    # type: (int, int, unicode, unicode) -> None
-    """Sends a message on the given chat."""
+    """
+    Sends a message on the given chat.
+
+    @param sending: The id of the sending chat.
+    @type sending: int
+    @param receiving: The id of the receiving chat.
+    @type receiving: int
+    @param nick: The nickname of the user, for logging purposes
+    @type nick: unicode
+    @param message: The message to send out.
+    @type message: unicode
+    """
     if receiving is None:  # If the conversation can't be found by libpurple, it'll just error anyway.
         return
 
@@ -607,8 +774,20 @@ def sendMessage(sending, receiving, nick, message):
 
 
 def messageListener(account, sender, message, conversation, flags):
-    # type: (int, int, unicode, int, tuple) -> None
-    """The function that runs when a message is received."""
+    """
+    The function that runs when a message is received.
+
+    @param account: The account the message was received on.
+    @type account: int
+    @param sender: The id of the chat the message was sent from.
+    @type sender: int
+    @param message: The recieved message.
+    @type message: unicode
+    @param conversation: The conversation in which this message was received.
+    @type conversation: int
+    @param flags: Any flags for this message, such as the type of message.
+    @type flags: tuple
+    """
     global lastMessageTime
     if purple.PurpleAccountGetUsername(account) == sender:
         return
@@ -665,8 +844,12 @@ purple.PurpleConversationsInit()
 
 
 def periodicLoop():
-    # type: ()->True
-    """Used for any tasks that may need to run in the background."""
+    """
+    Used for any tasks that may need to run in the background.
+
+    @return: True
+    @rtype: True
+    """
     eventRemoved = False
     for event in scheduledEvents:
         eventTime = None
