@@ -89,7 +89,7 @@ def getTime(currTime):
     @param currTime: A natural time string, such as "in 30 minutes" or "7 PM".
     @type currTime: unicode
     @return: The natural time as a datetime object.
-    @rtype: unicode
+    @rtype: datetime
     """
     return parser.parseDT(currTime)[0]
 
@@ -852,7 +852,7 @@ def periodicLoop():
     """
     eventRemoved = False
     for event in scheduledEvents:
-        eventTime = None
+        eventRemoved = False
         if isinstance(event[0], (str, unicode)):
             eventTime = datetime.strptime(event[0], u'%a, %d %b %Y %H:%M:%S UTC')
         else:
