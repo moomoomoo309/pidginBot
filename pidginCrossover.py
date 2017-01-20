@@ -64,16 +64,21 @@ def updateFile(path, value):
 naturalTime = lambda time: naturaltime(time + timedelta(seconds=1))  # Fixes rounding errors.
 naturalDelta = lambda time: naturaldelta(time - timedelta(seconds=1))  # Fixes rounding errors.
 
-getNameFromArgs = lambda account, name: purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(account, name)) # Gets a user's actual name given the account and name.
-getChatName = lambda chatId: purple.PurpleConversationGetTitle(chatId) # Gets the name of a chat given the chat's ID.
+getNameFromArgs = lambda account, name: purple.PurpleBuddyGetAlias(
+    purple.PurpleFindBuddy(account, name))  # Gets a user's actual name given the account and name.
+getChatName = lambda chatId: purple.PurpleConversationGetTitle(chatId)  # Gets the name of a chat given the chat's ID.
+
 
 def getTime(currTime):
     # type: (unicode) -> datetime
     """Given a natural time string, such as "in 30 minutes", returns that time as a datetime object."""
     return parser.parseDT(currTime)[0]
 
-getCommands = lambda argSet: "Valid Commands: {}, Valid Aliases: {}".format(str(sorted(commands.keys()))[1:-1],
-    str(sorted(aliases[getChatName(argSet[3])].keys()))[1:-1].replace("u'", "'")) # Returns a list of all of the commands.
+
+getCommands = lambda argSet: u"Valid Commands: {}, Valid Aliases: {}".format(str(sorted(commands.keys()))[1:-1],
+    str(sorted(aliases[getChatName(argSet[3])].keys()))[1:-1].replace("u'",
+        u"'"))  # Returns a list of all of the commands.
+
 
 def getFullConvName(partialName):
     # type: (unicode) -> unicode
@@ -87,7 +92,7 @@ def getFullConvName(partialName):
 # Returns the conversation ID of a conversation given its partial name.
 getConvFromPartialName = lambda partialName: getConvByName(getFullConvName(partialName))
 
-simpleReply = lambda argSet, message: sendMessage(argSet[-2], argSet[-2], [], message)  # Replies to a chat
+simpleReply = lambda argSet, message: sendMessage(argSet[-2], argSet[-2], u"", message)  # Replies to a chat
 
 # Gets the ID of a conversation, given its name. Does not work if a message has not been received from that chat yet.
 getConvByName = lambda name: next(
@@ -394,6 +399,7 @@ def leftLoc(argSet, *_):
 def AtLoc(argSet, *_):
     # type: (tuple, tuple) -> None
     """Replies with who is at the given location, or where everyone is if the location is not specified."""
+
     def toDate(string):
         if type(string) == datetime:
             return string
@@ -431,7 +437,7 @@ def AtLoc(argSet, *_):
             u"No one went {} in the last hour.".format(location if location == u"anywhere" else u"to " + location))
 
 
-def scheduleEvent(argSet, *args):
+def scheduleEvent(argSet, *_):
     # type: (tuple, tuple) -> None
     """Schedules the given command to run at the given time."""
     msg = argSet[2][len(commandDelimiter) + 9:]
@@ -499,7 +505,7 @@ commands = {  # A dict containing the functions to run when a given command is e
     u"echo": lambda argSet, *_: simpleReply(argSet,
         argSet[2][argSet[2].lower().find(u"echo") + 4 + len(commandDelimiter):]),
     u"exit": lambda *_: exit(37),
-    u"msg": lambda argSet, msg="", *_: sendMessage(argSet[-2], getConvFromPartialName(msg), [],
+    u"msg": lambda argSet, msg="", *_: sendMessage(argSet[-2], getConvFromPartialName(msg), u"",
         getNameFromArgs(*argSet[:2]) + ": " + argSet[2][
         argSet[2][4 + len(commandDelimiter):].find(" ") + 5 + len(commandDelimiter):]),
     u"link": lambda argSet, *args: Link(argSet, *args),
@@ -569,8 +575,9 @@ helpText = {  # The help text for each command.
     u"schedule": u"Runs a command after the specified amount of time."
 }
 
+
 def sendMessage(sending, receiving, nick, message):
-    # type: (int, int, str, str) -> None
+    # type: (int, int, unicode, unicode) -> None
     """Sends a message on the given chat."""
     if receiving is None:  # If the conversation can't be found by libpurple, it'll just error anyway.
         return
@@ -611,7 +618,7 @@ def messageListener(account, sender, message, conversation, flags):
         return
     lastMessageTime = now()
     # Strip HTML from Hangouts messages.
-    message = purple.PurpleMarkupStripHtml(message) if message.startswith("<") else message
+    message = purple.PurpleMarkupStripHtml(message) if message.startswith(u"<") else message
 
     nick = purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(account, sender))
     # Logs messages. Logging errors will not prevent commands from working.
