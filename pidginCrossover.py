@@ -852,7 +852,6 @@ def periodicLoop():
     """
     eventRemoved = False
     for event in scheduledEvents:
-        eventRemoved = False
         if isinstance(event[0], (str, unicode)):
             eventTime = datetime.strptime(event[0], u'%a, %d %b %Y %H:%M:%S UTC')
         else:
