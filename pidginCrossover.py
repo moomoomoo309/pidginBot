@@ -39,7 +39,7 @@ def readFile(path):
     return out
 
 
-readFiles = lambda *paths: [readFile(path) for path in paths]  #
+readFiles = lambda *paths: map(readFile, paths)  # Runs readFile on all of the paths provided.
 
 
 def getChats():
@@ -52,9 +52,7 @@ def getChats():
     chatIDs = dict()
     for i in rawChats:
         info = (purple.PurpleConversationGetAccount(i), purple.PurpleConversationGetTitle(i))
-        if info not in chatIDs or i > chatIDs[info] and (
-                    (purple.PurpleConversationGetType(i) == 2 and i <= 10000) or
-                        purple.PurpleConversationGetType(i) != 2):
+        if info not in chatIDs or chatIDs[info] < i <= 10000 or purple.PurpleConversationGetType(i) != 2:
             chatIDs[info] = i
     return chatIDs.values()
 
@@ -77,8 +75,9 @@ def updateFile(path, value):
 naturalTime = lambda time: naturaltime(time + timedelta(seconds=1))  # Fixes rounding errors.
 naturalDelta = lambda time: naturaldelta(time - timedelta(seconds=1))  # Fixes rounding errors.
 
-getNameFromArgs = lambda account, name: purple.PurpleBuddyGetAlias(
-    purple.PurpleFindBuddy(account, name))  # Gets a user's actual name given the account and name.
+# Gets a user's actual name given the account and name.
+getNameFromArgs = lambda act, name: purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(act, name))
+
 getChatName = lambda chatId: purple.PurpleConversationGetTitle(chatId)  # Gets the name of a chat given the chat's ID.
 
 
@@ -94,9 +93,8 @@ def getTime(currTime):
     return parser.parseDT(currTime)[0]
 
 
-getCommands = lambda argSet: u"Valid Commands: {}, Valid Aliases: {}".format(str(sorted(commands.keys()))[1:-1],
-    str(sorted(aliases[getChatName(argSet[3])].keys()))[1:-1].replace("u'",
-        u"'"))  # Returns a list of all of the commands.
+getCommands = lambda argSet: u"Valid Commands: {}, Valid Aliases: {}".format(", ".join(sorted(commands.keys())),
+    ", ".join(sorted(aliases[getChatName(argSet[3])].keys())))  # Returns a list of all of the commands.
 
 
 def getFullConvName(partialName):
@@ -117,7 +115,18 @@ def getFullConvName(partialName):
 # Returns the conversation ID of a conversation given its partial name.
 getConvFromPartialName = lambda partialName: getConvByName(getFullConvName(partialName))
 
-simpleReply = lambda argSet, message: sendMessage(argSet[-2], argSet[-2], u"", message)  # Replies to a chat
+
+def simpleReply(argSet, message):
+    """
+    Sends the message to the chat matching the given argSet.
+
+    :param argSet: The set of values passed in to messageListener.
+    :type argSet: tuple
+    :param message: The message to send out.
+    :type message: unicode
+    """
+    sendMessage(argSet[-2], argSet[-2], u"", message)  # Replies to a chat
+
 
 # Gets the ID of a conversation, given its name. Does not work if a message has not been received from that chat yet.
 getConvByName = lambda name: next(
@@ -404,40 +413,6 @@ def getUserFromName(argSet, partialName):
     return u"" + name if name is not None else None
 
 
-def runCommand(argSet, command, *args):
-    """
-    Runs the command given the argSet and the command it's trying to run.
-
-    :param argSet: The set of values passed in to messageListener.
-    :type argSet: tuple
-    :param command: The command to run.
-    :type command: unicode
-    :return: If the given command could be run, either as a command or an alias.
-    :rtype: unicode
-    """
-    command = (command or argSet[2][:argSet[2].find(" ")]).lower()
-    chat = getChatName(argSet[3])
-    aliases[chat] = aliases[chat] if chat in aliases else {}
-    if command in commands:
-        commands[command](argSet, *args)
-        return True
-    elif command in aliases[chat]:
-        message = argSet[2]
-        command = message[len(commandDelimiter):message.find(" ") if " " in message else len(message)].lower()
-        message = message[:message.lower().find(command)] + command + message[
-        message.lower().find(command) + len(command):]
-        newMsg = replaceAliasVars(argSet, (message + (
-            u" ".join(tuple(args)) if len(
-                tuple(aliases[chat][command][1][len(commandDelimiter):])) > 0 else u"")).replace(
-            command,
-            aliases[chat][command][0]))
-        commands[aliases[chat][command][1][0]]((argSet[0], argSet[1], newMsg, argSet[3], argSet[4]), *(
-            (tuple(args) if len(
-                tuple(aliases[chat][command][1][len(commandDelimiter):])) > 0 else ())))  # Run the alias's command
-        return True
-    return False
-
-
 def Mimic(argSet, user=None, firstWordOfCmd=None, *_):
     """
     Runs a command as a different user.
@@ -672,9 +647,10 @@ commands = {  # A dict containing the functions to run when a given command is e
     u"help": Help,
     u"ping": lambda argSet, *_: simpleReply(argSet, u"Pong!"),
     u"chats": lambda argSet, *_: simpleReply(argSet,
-        str([u"{} ({})".format(purple.PurpleConversationGetTitle(conv), conv) for conv in getChats()])[1:-1].replace(
+        u"" + str([u"{} ({})".format(purple.PurpleConversationGetTitle(conv), conv) for conv in getChats()])[
+        1:-1].replace(
             "u'", "'")),
-    u"args": lambda argSet, *_: simpleReply(argSet, str(argSet)),
+    u"args": lambda argSet, *_: simpleReply(argSet, u"" + str(argSet)),
     u"echo": lambda argSet, *_: simpleReply(argSet,
         argSet[2][argSet[2].lower().find(u"echo") + 4 + len(commandDelimiter):]),
     u"exit": lambda *_: exit(37),
@@ -683,8 +659,8 @@ commands = {  # A dict containing the functions to run when a given command is e
         argSet[2][4 + len(commandDelimiter):].find(" ") + 5 + len(commandDelimiter):]),
     u"link": lambda argSet, *args: Link(argSet, *args),
     u"unlink": lambda argSet, *args: Unlink(argSet, *args),
-    u"links": lambda argSet, *_: simpleReply(argSet, str(messageLinks)),
-    u"pun": lambda argSet, pun=(), *_: simpleReply(argSet, getPun(argSet, pun)),
+    u"links": lambda argSet, *_: simpleReply(argSet, u"" + str(messageLinks)),
+    u"pun": lambda argSet, pun=u"", *_: simpleReply(argSet, getPun(argSet, pun)),
     u"addpun": lambda argSet, *_: addPun(argSet, argSet[2][7 + len(commandDelimiter):]),
     u"removepun": lambda argSet, pun, *_: removePun(argSet, pun),
     u"alias": addAlias,
@@ -749,6 +725,40 @@ helpText = {  # The help text for each command.
 }
 
 
+def runCommand(argSet, command, *args):
+    """
+    Runs the command given the argSet and the command it's trying to run.
+
+    :param argSet: The set of values passed in to messageListener.
+    :type argSet: tuple
+    :param command: The command to run.
+    :type command: unicode
+    :return: If the given command could be run, either as a command or an alias.
+    :rtype: bool
+    """
+    command = (command or argSet[2][:argSet[2].find(" ")]).lower()
+    chat = getChatName(argSet[3])
+    aliases[chat] = aliases[chat] if chat in aliases else {}
+    if command in commands:
+        commands[command](argSet, *args)
+        return True
+    elif command in aliases[chat]:
+        message = argSet[2]
+        command = message[len(commandDelimiter):message.find(" ") if " " in message else len(message)].lower()
+        message = message[:message.lower().find(command)] + command + message[
+        message.lower().find(command) + len(command):]
+        newMsg = replaceAliasVars(argSet, (message + (
+            u" ".join(tuple(args)) if len(
+                tuple(aliases[chat][command][1][len(commandDelimiter):])) > 0 else u"")).replace(
+            command,
+            aliases[chat][command][0]))
+        commands[aliases[chat][command][1][0]]((argSet[0], argSet[1], newMsg, argSet[3], argSet[4]), *(
+            (tuple(args) if len(
+                tuple(aliases[chat][command][1][len(commandDelimiter):])) > 0 else ())))  # Run the alias's command
+        return True
+    return False
+
+
 def sendMessage(sending, receiving, nick, message):
     """
     Sends a message on the given chat.
@@ -795,8 +805,8 @@ def messageListener(account, sender, message, conversation, flags):
 
     :param account: The account the message was received on.
     :type account: int
-    :param sender: The id of the chat the message was sent from.
-    :type sender: int
+    :param sender: The name of the chat the message was sent from.
+    :type sender: unicode
     :param message: The received message.
     :type message: unicode
     :param conversation: The conversation in which this message was received.
@@ -815,9 +825,9 @@ def messageListener(account, sender, message, conversation, flags):
     # Strip HTML from Hangouts messages.
     message = purple.PurpleMarkupStripHtml(message) if message.startswith(u"<") else message
 
-    nick = purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(account, sender))
-    # Logs messages. Logging errors will not prevent commands from working.
-    try:
+    nick = purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(account, sender))  # Name which will appear on the log.
+
+    try:  # Logs messages. Logging errors will not prevent commands from working.
         logStr(u"{}: {}\n".format(nick, (u"" + str(message))))
         logFile.flush()
     except UnicodeError:
@@ -866,25 +876,27 @@ def periodicLoop():
     """
     eventRemoved = False
     for event in scheduledEvents:
-        if isinstance(event[0], (str, unicode)): # If it's reading it from the serialized version...
-            eventTime = datetime.strptime(event[0], u'%a, %d %b %Y %H:%M:%S UTC') # Convert it back to a datetime object
+        if isinstance(event[0], (str, unicode)):  # If it's reading it from the serialized version...
+            eventTime = datetime.strptime(event[0],
+                u'%a, %d %b %Y %H:%M:%S UTC')  # Convert it back to a datetime object
         else:
             eventTime = event[0]
-        if timedelta() < now() - eventTime: # If the event is due to be scheduled...
-            if now() - eventTime < timedelta(minutes=5): # Make sure the event was supposed to be run less than 5 minutes before now,
+        if timedelta() < now() - eventTime:  # If the event is due to be scheduled...
+            if now() - eventTime < timedelta(
+                    minutes=5):  # Make sure the event was supposed to be run less than 5 minutes before now,
                 # Otherwise, don't run the function, but still discard of it.
                 try:
                     messageListener(*event[1])
                 except:
                     pass
-            scheduledEvents.remove(event) # Discard of the event
+            scheduledEvents.remove(event)  # Discard of the event
             eventRemoved = True
-    if eventRemoved: # If any events were removed, update the file.
+    if eventRemoved:  # If any events were removed, update the file.
         updateFile(u"scheduledEvents.json", scheduledEvents)
     return True
 
 
 GObject.threads_init()
 GLib.threads_init()
-GLib.timeout_add_seconds(1, periodicLoop)
-GObject.MainLoop().run()
+GLib.timeout_add_seconds(1, periodicLoop)  # Run periodicLoop once per second.
+GObject.MainLoop().run()  # Actually run the program.
