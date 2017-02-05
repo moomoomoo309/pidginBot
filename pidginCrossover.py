@@ -31,7 +31,7 @@ def readFile(path):
     with open(path, mode="r") as fileHandle:  # With is nice and clean.
         out = None
         strFile = fileHandle.read(-1)
-        if out is None and strFile != "":
+        if out is None and strFile != u"":
             try:
                 out = loads(strFile)  # json.loads is WAY faster than ast.literal_eval!
             except ValueError:
@@ -66,9 +66,14 @@ def updateFile(path, value):
     :param value: The unicode string to overwrite the file with.
     :type value: unicode
     """
+
+    def serializeDate(string):
+        if isinstance(string, datetime):
+            return string.strftime(u'%a, %d %b %Y %H:%M:%S UTC')
+        return None
+
     with open(path, mode="w") as openFile:  # To update a file
-        openFile.write(dumps(value, openFile, indent=4,
-            default=lambda o: o.strftime('%a, %d %b %Y %H:%M:%S UTC') if isinstance(o, datetime) else None))
+        openFile.write(dumps(value, openFile, indent=4, default=serializeDate))
         # The default function allows it to dump datetime objects.
 
 
@@ -93,8 +98,8 @@ def getTime(currTime):
     return parser.parseDT(currTime)[0]
 
 
-getCommands = lambda argSet: u"Valid Commands: {}, Valid Aliases: {}".format(", ".join(sorted(commands.keys())),
-    ", ".join(sorted(aliases[getChatName(argSet[3])].keys())))  # Returns a list of all of the commands.
+getCommands = lambda argSet: u"Valid Commands: {}, Valid Aliases: {}".format(u", ".join(sorted(commands.keys())),
+    u", ".join(sorted(aliases[getChatName(argSet[3])].keys())))  # Returns a list of all of the commands.
 
 
 def getFullConvName(partialName):
@@ -135,18 +140,18 @@ getConvByName = lambda name: next(
 logFile = open("Pidgin_Crossover_Messages.log", mode="a")
 # Writes a string to the log file.
 logStr = lambda string: logFile.write(str(u"[{}] {}\n".format(now().isoformat(), demojize(string))))
-log = lambda string: [fct(string + "\n") for fct in (print, logStr)]  # Prints and writes to the log file.
+log = lambda string: [fct(string + u"\n") for fct in (print, logStr)]  # Prints and writes to the log file.
 
 # Returns what it says on the tin.
 isListButNotString = lambda obj: isinstance(obj, (list, tuple, set)) and not isinstance(obj, (str, unicode))
 # ---------------------------------------
 
 # Read files for persistent values.
-messageLinks, puns, aliases, atLoc, scheduledEvents = readFiles("messageLinks.json", "Puns.json", "Aliases.json",
-    "atLoc.json", "scheduledEvents.json")
+messageLinks, puns, aliases, atLoc, scheduledEvents = readFiles(u"messageLinks.json", u"Puns.json", u"Aliases.json",
+    u"atLoc.json", u"scheduledEvents.json")
 
-commandDelimiter = "!"  # What character(s) the commands should start with.
-lastMessage = ""  # The last message, to prevent infinite looping.
+commandDelimiter = u"!"  # What character(s) the commands should start with.
+lastMessage = u""  # The last message, to prevent infinite looping.
 now = datetime.now
 lastMessageTime = now()
 parser = datetimeParser()
@@ -249,7 +254,7 @@ def Link(argSet, chat, *chats):
     if len(messageLinks[fullChatName]) == 1:
         messageLinks[fullChatName] = messageLinks[fullChatName][0]
     updateFile(u"messageLinks.json", messageLinks)
-    simpleReply(argSet, u"{} linked to {}.".format(str(fullChatNames)[1:-1], fullChatName))
+    simpleReply(argSet, u"{} linked to {}.".format(", ".join(str(i) for i in fullChatNames), fullChatName))
 
 
 def Unlink(argSet, chat, *chats):
@@ -277,7 +282,7 @@ def Unlink(argSet, chat, *chats):
         elif isinstance(messageLinks[fullChatName], dict) and fullName in messageLinks[fullChatName]:
             removedChats.append(messageLinks[fullChatName].pop(messageLinks[fullChatName].index(fullName)))
     updateFile(u"messageLinks.json", messageLinks)  # Update the messageLinks file.
-    simpleReply(argSet, u"{} unlinked from {}.".format(str(removedChats)[1:-1], fullChatName))
+    simpleReply(argSet, u"{} unlinked from {}.".format(u", ".join(removedChats), fullChatName))
 
 
 def addPun(argSet, pun):
@@ -341,7 +346,7 @@ def addAlias(argSet, *_):
         simpleReply(argSet, u"That name is already used by a command!")
         return
     cmd = argsMsg[(len(commandDelimiter) if argsMsg.startswith(commandDelimiter) else 0):(
-        " " in argsMsg and argsMsg.find(" ") or len(argsMsg))]
+        " " in argsMsg and argsMsg.find(u" ") or len(argsMsg))]
     if cmd not in commands:
         simpleReply(argSet, u"{}{} is not a command!".format(commandDelimiter, cmd))
         return
@@ -431,9 +436,9 @@ def Mimic(argSet, user=None, firstWordOfCmd=None, *_):
     if fullUser is None:
         simpleReply(argSet, u"No user by the name \"{}\" found.".format(user))
     # The command, after the user argument.
-    cmd = argSet[2][6 + len(commandDelimiter):][argSet[2][6 + len(commandDelimiter):].find(" ") + 1:].lower()
-    if not runCommand((argSet[0], fullUser, cmd, argSet[3], argSet[4]), cmd.split(" ")[0][len(commandDelimiter):],
-            *cmd.split(" ")[len(commandDelimiter):]):
+    cmd = argSet[2][6 + len(commandDelimiter):][argSet[2][6 + len(commandDelimiter):].find(u" ") + 1:].lower()
+    if not runCommand((argSet[0], fullUser, cmd, argSet[3], argSet[4]), cmd.split(u" ")[0][len(commandDelimiter):],
+            *cmd.split(u" ")[len(commandDelimiter):]):
         simpleReply(argSet, u"That's not a command!")
 
 
@@ -444,8 +449,8 @@ def loc(argSet, *_):
     :param argSet: The set of values passed in to messageListener.
     :type argSet: tuple
     """
-    time = argSet[2][len(commandDelimiter) + 4:argSet[2].find(" ", len(commandDelimiter) + 4)]
-    location = argSet[2][argSet[2].find(" ", len(commandDelimiter) + 4) + 1:] if len(argSet[2]) > len(
+    time = argSet[2][len(commandDelimiter) + 4:argSet[2].find(u" ", len(commandDelimiter) + 4)]
+    location = argSet[2][argSet[2].find(u" ", len(commandDelimiter) + 4) + 1:] if len(argSet[2]) > len(
         commandDelimiter) + 4 else u"GDS"
     Loc(argSet, time, location)
 
@@ -477,7 +482,7 @@ def Loc(argSet, time=u"30 minutes", location=u"GDS"):
         u"{} is going to {}{} for {}.".format(
             getNameFromArgs(*argSet[:2]),
             location,
-            (" " + appendMsg if len(appendMsg) > 0 else ""),
+            (u" " + appendMsg if len(appendMsg) > 0 else ""),
             naturalDelta(now() - dateTime) if dateTime is not None else ""
         )
     )
@@ -577,13 +582,60 @@ def scheduleEvent(argSet, *_):
         timeStr = msg[:msg.find(commandDelimiter) - 1]
         cmdStr = msg[msg.find(commandDelimiter):]
     else:
-        simpleReply(argSet, u"You need a command to run, with the command delimiter (" + commandDelimiter + u").")
+        simpleReply(argSet, u"You need a command to run, with the command delimiter (u" + commandDelimiter + u").")
         return
     newArgset = list(argSet)
     newArgset[2] = cmdStr
     scheduledEvents.append((getTime(timeStr), newArgset))
     updateFile(u"scheduledEvents.json", scheduledEvents)
-    simpleReply(argSet, u"\"{}\" scheduled to run at {}.".format(cmdStr, naturalTime(getTime(timeStr))))
+    simpleReply(argSet, u"\"{}\" scheduled to run {}.".format(cmdStr, naturalTime(getTime(timeStr))))
+
+
+def getEvents(argSet, *_):
+    """
+    Tells the user what events they have scheduled.
+    :param argSet: The set of values passed in to messageListener.
+    :type argSet: tuple
+    """
+    eventStrs = [u"[{}] {}: {}".format(scheduledEvents.index(event),
+        naturalTime(datetime.strptime(event[0], u'%a, %d %b %Y %H:%M:%S UTC') if type(event[0]) != datetime else event[0]),event[1][2])
+        for event in scheduledEvents if getNameFromArgs(*event[1][0:2]) == getNameFromArgs(*argSet[0:2])]
+    if len(list(eventStrs)) == 0:
+        simpleReply(argSet, u"You don't have any events scheduled!")
+    else:
+        simpleReply(argSet, u"\n".join(eventStrs))
+
+def getAllEvents(argSet, *_):
+    """
+    Replies with all of the scheduled events.
+    :param argSet: The set of values passed in to messageListener.
+    :type argSet: tuple
+    """
+    eventStrs = (u"[{}] {} in {}: {}".format(event[0], getNameFromArgs(*event[1][1][0:2]),
+        naturalTime(datetime.strptime(event[1][0], u'%a, %d %b %Y %H:%M:%S UTC')
+        if type(event[0]) != datetime else event[1][0]),event[1][1][2]) for event in enumerate(scheduledEvents))
+    finalStr = u"\n".join(eventStrs)
+    if len(finalStr)<9:
+        simpleReply(argSet, u"No events have been scheduled.")
+    else:
+        simpleReply(argSet, finalStr)
+
+
+def removeEvent(argSet, index, *_):
+    """
+    Removes a scheduled event.
+    :param argSet: The set of values passed in to messageListener
+    :type argSet: tuple
+    :param index: The index of the event to be removed.
+    :type index: int
+    """
+    userEvents = (e for e in scheduledEvents if getNameFromArgs(*e[1][0:2]) == getNameFromArgs(*argSet[0:2]))
+    index = int(index)
+    if scheduledEvents[index] in userEvents:
+        scheduledEvents.pop(index)
+        simpleReply(argSet, u"Event at index {} removed.".format(index))
+    else:
+        simpleReply(argSet, u"You don't have an event scheduled with that index!")
 
 
 dice = [u"0⃣", u"1⃣", u"2⃣", u"3⃣", u"4⃣", u"5⃣", u"6⃣", u"7⃣", u"8⃣", u"9⃣️⃣️"]  # 1-9 in emoji form
@@ -637,7 +689,7 @@ def to(argSet, *args):
     name = getFullUsername(argSet, user)
     if name is not None:
         simpleReply(argSet,
-            replaceAliasVars(argSet, argSet[2][len(commandDelimiter) + 3:argSet[2].rfind(" ")]).replace(u"%target",
+            replaceAliasVars(argSet, argSet[2][len(commandDelimiter) + 3:argSet[2].rfind(u" ")]).replace(u"%target",
                 name))
     else:
         simpleReply(argSet, u"No user containing {} found.".format(user))
@@ -656,7 +708,7 @@ commands = {  # A dict containing the functions to run when a given command is e
     u"exit": lambda *_: exit(37),
     u"msg": lambda argSet, msg="", *_: sendMessage(argSet[-2], getConvFromPartialName(msg), u"",
         getNameFromArgs(*argSet[:2]) + ": " + argSet[2][
-        argSet[2][4 + len(commandDelimiter):].find(" ") + 5 + len(commandDelimiter):]),
+        argSet[2][4 + len(commandDelimiter):].find(u" ") + 5 + len(commandDelimiter):]),
     u"link": lambda argSet, *args: Link(argSet, *args),
     u"unlink": lambda argSet, *args: Unlink(argSet, *args),
     u"links": lambda argSet, *_: simpleReply(argSet, u"" + str(messageLinks)),
@@ -666,7 +718,7 @@ commands = {  # A dict containing the functions to run when a given command is e
     u"alias": addAlias,
     u"unalias": removeAlias,
     u"aliases": lambda argSet, *_: simpleReply(argSet,
-        "Valid aliases: {}".format(str(aliases[getChatName(argSet[3])].keys())[1:-1]).replace("u'", "'")),
+        "Valid aliases: {}".format(u", ".join(aliases[getChatName(argSet[3])].keys())).replace(u"u'", u"'")),
     u"me": lambda argSet, *_: simpleReply(argSet, u"*{} {}.".format(
         purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2])), argSet[2][3 + len(commandDelimiter):])),
     u"botme": lambda argSet, *_: simpleReply(argSet, u"*{} {}.".format(purple.PurpleAccountGetAlias(argSet[0]),
@@ -686,7 +738,10 @@ commands = {  # A dict containing the functions to run when a given command is e
     u"restart": lambda *_: exit(0),
     u"commands": lambda argSet, *_: simpleReply(argSet, getCommands(argSet)),
     u"to": to,
-    u"schedule": scheduleEvent
+    u"schedule": scheduleEvent,
+    u"events": getEvents,
+    u"allevents": getAllEvents,
+    u"unschedule": removeEvent
 }
 
 helpText = {  # The help text for each command.
@@ -721,7 +776,11 @@ helpText = {  # The help text for each command.
     u"commands": u"Lists all of the commands.",
     u"to": u"Sends a message with the provided person as a 'target'. Mainly used for aliases.",
     u"aliasvars": u"%sendername, %botname, %chattitle, %chatname",
-    u"schedule": u"Runs a command after the specified amount of time."
+    u"schedule": u"Runs a command after the specified amount of time.",
+    u"events": u"Lists all of the events you have scheduled.",
+    u"allevents": u"Lists all scheduled events.",
+    u"unschedule": "Unschedules the event with the given index. (The index should be from {}events)".format(
+        commandDelimiter)
 }
 
 
@@ -736,7 +795,7 @@ def runCommand(argSet, command, *args):
     :return: If the given command could be run, either as a command or an alias.
     :rtype: bool
     """
-    command = (command or argSet[2][:argSet[2].find(" ")]).lower()
+    command = (command or argSet[2][:argSet[2].find(u" ")]).lower()
     chat = getChatName(argSet[3])
     aliases[chat] = aliases[chat] if chat in aliases else {}
     if command in commands:
@@ -744,13 +803,11 @@ def runCommand(argSet, command, *args):
         return True
     elif command in aliases[chat]:
         message = argSet[2]
-        command = message[len(commandDelimiter):message.find(" ") if " " in message else len(message)].lower()
+        command = message[len(commandDelimiter):message.find(u" ") if u" " in message else len(message)].lower()
         message = message[:message.lower().find(command)] + command + message[
         message.lower().find(command) + len(command):]
-        newMsg = replaceAliasVars(argSet, (message + (
-            u" ".join(tuple(args)) if len(
-                tuple(aliases[chat][command][1][len(commandDelimiter):])) > 0 else u"")).replace(
-            command,
+        newMsg = replaceAliasVars(argSet, (message + (u" ".join(tuple(args)) if len(
+            tuple(aliases[chat][command][1][len(commandDelimiter):])) > 0 else u"")).replace(command,
             aliases[chat][command][0]))
         commands[aliases[chat][command][1][0]]((argSet[0], argSet[1], newMsg, argSet[3], argSet[4]), *(
             (tuple(args) if len(
@@ -828,14 +885,14 @@ def messageListener(account, sender, message, conversation, flags):
     nick = purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(account, sender))  # Name which will appear on the log.
 
     try:  # Logs messages. Logging errors will not prevent commands from working.
-        logStr(u"{}: {}\n".format(nick, (u"" + str(message))))
+        log(u"{}: {}\n".format(nick, (u"" + str(message))))
         logFile.flush()
     except UnicodeError:
         pass
     # Run commands if the message starts with the command character.
     if message[0:len(commandDelimiter)] == commandDelimiter:
-        command = message[len(commandDelimiter):message.find(" ") if " " in message else len(message)].lower()
-        args = message.split(" ")[1:]
+        command = message[len(commandDelimiter):message.find(u" ") if u" " in message else len(message)].lower()
+        args = message.split(u" ")[1:]
         argSet = (account, sender, message, conversation, flags)
         if not runCommand(argSet, command.lower(), *args):
             simpleReply(argSet, u"Command/alias \"{}\" not found. {}".format(
@@ -855,7 +912,7 @@ def messageListener(account, sender, message, conversation, flags):
         else:
             receiving = getConvByName(messageLinks[title])
             sendMessage(conversation, receiving, nick, message)
-    lastMessage = nick + ": " + message  # Remember the last message to prevent infinite looping.
+    lastMessage = nick + u": " + message  # Remember the last message to prevent infinite looping.
 
 
 bus = SessionBus()  # Initialize the DBus interface
@@ -877,19 +934,17 @@ def periodicLoop():
     eventRemoved = False
     for event in scheduledEvents:
         if isinstance(event[0], (str, unicode)):  # If it's reading it from the serialized version...
-            eventTime = datetime.strptime(event[0],
-                u'%a, %d %b %Y %H:%M:%S UTC')  # Convert it back to a datetime object
+            eventTime = datetime.strptime(event[0], u'%a, %d %b %Y %H:%M:%S UTC')  # Convert it back to a datetime
         else:
             eventTime = event[0]
         if timedelta() < now() - eventTime:  # If the event is due to be scheduled...
-            if now() - eventTime < timedelta(
-                    minutes=5):  # Make sure the event was supposed to be run less than 5 minutes before now,
-                # Otherwise, don't run the function, but still discard of it.
+            if now() - eventTime < timedelta(minutes=5):  # Make sure the event was supposed to be run
+                # less than 5 minutes before now, otherwise, don't run the function, but still discard of it.
                 try:
                     messageListener(*event[1])
                 except:
                     pass
-            scheduledEvents.remove(event)  # Discard of the event
+            scheduledEvents.remove(event)  # Discard the event
             eventRemoved = True
     if eventRemoved:  # If any events were removed, update the file.
         updateFile(u"scheduledEvents.json", scheduledEvents)
