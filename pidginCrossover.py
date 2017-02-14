@@ -16,6 +16,7 @@ from humanize import naturaldelta, naturaltime
 from pydbus import SessionBus
 from parsedatetime import Calendar as datetimeParser
 from time import strptime
+from pprint import pformat
 
 
 # Utility Functions:
@@ -28,14 +29,17 @@ def readFile(path):
     :type path: unicode
     :return: The file parsed as json.
     """
-    with open(path, mode="r") as fileHandle:  # With is nice and clean.
-        out = None
-        strFile = fileHandle.read(-1)
-        if out is None and strFile != u"":
-            try:
-                out = loads(strFile)  # json.loads is WAY faster than ast.literal_eval!
-            except ValueError:
-                pass
+    try:
+        with open(path, mode="r+") as fileHandle:  # With is nice and clean.
+            out = None
+            strFile = fileHandle.read(-1)
+            if out is None and strFile != u"":
+                try:
+                    out = loads(strFile)  # json.loads is WAY faster than ast.literal_eval!
+                except ValueError:
+                    pass
+    except IOError:
+        return None
     return out
 
 
@@ -69,7 +73,7 @@ def updateFile(path, value):
 
     def serializeDate(string):
         if isinstance(string, datetime):
-            return string.strftime(u'%a, %d %b %Y %H:%M:%S UTC')
+            return string.strftime(dtFormatStr)
         return None
 
     with open(path, mode="w") as openFile:  # To update a file
@@ -80,8 +84,20 @@ def updateFile(path, value):
 naturalTime = lambda time: naturaltime(time + timedelta(seconds=1))  # Fixes rounding errors.
 naturalDelta = lambda time: naturaldelta(time - timedelta(seconds=1))  # Fixes rounding errors.
 
-# Gets a user's actual name given the account and name.
-getNameFromArgs = lambda act, name: purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(act, name))
+
+def getNameFromArgs(act, name, conv=None):
+    """
+    Gets a user's actual name given the account and name.
+    :param act: The account from the argSet.
+    :param name: The user's name from the argSet.
+    :param conv: The conversation from the argSet.
+    :return: The user's nickname, or their actual name if no nick was found.
+    """
+    realName = purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(act, name))
+    if conv is not None:
+        chat = getChatName(conv)
+    return nicks[chat].get(realName, realName) if conv is not None else realName
+
 
 getChatName = lambda chatId: purple.PurpleConversationGetTitle(chatId)  # Gets the name of a chat given the chat's ID.
 
@@ -147,8 +163,9 @@ isListButNotString = lambda obj: isinstance(obj, (list, tuple, set)) and not isi
 # ---------------------------------------
 
 # Read files for persistent values.
-messageLinks, puns, aliases, atLoc, scheduledEvents = readFiles(u"messageLinks.json", u"Puns.json", u"Aliases.json",
-    u"atLoc.json", u"scheduledEvents.json")
+messageLinks, puns, aliases, atLoc, scheduledEvents, nicks = readFiles(u"messageLinks.json", u"Puns.json",
+    u"Aliases.json",
+    u"atLoc.json", u"scheduledEvents.json", u"nicks.json")
 
 commandDelimiter = u"!"  # What character(s) the commands should start with.
 lastMessage = u""  # The last message, to prevent infinite looping.
@@ -161,11 +178,13 @@ aliases = aliases or {}
 atLoc = atLoc or {}
 scheduledEvents = scheduledEvents or []
 aliasVars = [  # Replace the string with the result from the lambda below.
-    ("%sendername", lambda argSet: getNameFromArgs(*argSet[:2])),
+    ("%sendername", lambda argSet: getNameFromArgs(argSet[0], argSet[1], argSet[3])),
     ("%botname", lambda argSet: purple.PurpleAccountGetAlias(argSet[0])),
     ("%chattitle", lambda argSet: purple.PurpleConversationGetTitle(argSet[3])),
     ("%chatname", lambda argSet: purple.PurpleConversationGetName(argSet[3]))
 ]
+nicks = nicks or {}
+dtFormatStr = u"%a, %d %b %Y %H:%M:%S UTC"
 
 
 def replaceAliasVars(argSet, message):
@@ -378,7 +397,7 @@ def removeAlias(argSet, alias=u"", *_):
     updateFile(u"Aliases.json", aliases)
 
 
-def getFullUsername(argSet, partialName):
+def getFullUsername(argSet, partialName, nick=True):
     """
     Returns a user's alias given their partial name.
 
@@ -386,19 +405,24 @@ def getFullUsername(argSet, partialName):
     :type argSet: tuple
     :param partialName: The partial name of a user.
     :type partialName: unicode
+    :param nick: Whether or not it should return the user's nickname.
+    :type nick: bool
     :return: A user's alias.
     :rtype: unicode
     """
+    chat = getChatName(argSet[3])
     buddies = [purple.PurpleConvChatCbGetName(user) for user in
         purple.PurpleConvChatGetUsers(purple.PurpleConvChat(argSet[3]))][:-1]
     names = [getNameFromArgs(argSet[0], buddy) for buddy in buddies]
     # Check the beginning first, otherwise, check if the partialname is somewhere in the name.
     name = (next((names[i] for i in range(len(names)) if names[i][0:len(partialName)].lower() == partialName.lower()),
         None) or next((names[i] for i in range(len(names)) if partialName.lower() in names[i].lower()), None))
-    return u"" + name if name is not None else None
+    if nick and name is not None and u""+name in nicks[chat]:
+        return nicks[chat][u""+name]
+    return name
 
 
-def getUserFromName(argSet, partialName):
+def getUserFromName(argSet, partialName, nick = True):
     """
     Returns the "name" of a user given their partial name.
 
@@ -409,13 +433,16 @@ def getUserFromName(argSet, partialName):
     :return: A user's "name".
     :rtype: unicode
     """
+    chat = getChatName(argSet[3])
     buddies = [purple.PurpleConvChatCbGetName(user) for user in
         purple.PurpleConvChatGetUsers(purple.PurpleConvChat(argSet[3]))][:-1]
     names = [getNameFromArgs(argSet[0], buddy) for buddy in buddies]
     # Check the beginning first, otherwise, check if the partialname is somewhere in the name.
     name = (next((buddies[i] for i in range(len(names)) if names[i][0:len(partialName)].lower() == partialName.lower()),
         None) or next((buddies[i] for i in range(len(names)) if partialName.lower() in names[i].lower()), None))
-    return u"" + name if name is not None else None
+    if nick and name is not None and u""+name in nicks[chat]:
+        return nicks[chat][u""+name]
+    return name
 
 
 def Mimic(argSet, user=None, firstWordOfCmd=None, *_):
@@ -432,7 +459,7 @@ def Mimic(argSet, user=None, firstWordOfCmd=None, *_):
     if user is None or firstWordOfCmd is None:
         simpleReply(argSet, u"You need to specify the user to mimic and the command to mimic!")
         return
-    fullUser = getUserFromName(argSet, user)
+    fullUser = getUserFromName(argSet, user, False)
     if fullUser is None:
         simpleReply(argSet, u"No user by the name \"{}\" found.".format(user))
     # The command, after the user argument.
@@ -529,7 +556,7 @@ def AtLoc(argSet, *_):
         if type(string) == datetime:
             return string
         try:
-            return datetime.strptime(string, u'%a, %d %b %Y %H:%M:%S UTC')
+            return datetime.strptime(string, dtFormatStr)
         except:
             return now()
 
@@ -598,12 +625,13 @@ def getEvents(argSet, *_):
     :type argSet: tuple
     """
     eventStrs = [u"[{}] {}: {}".format(scheduledEvents.index(event),
-        naturalTime(datetime.strptime(event[0], u'%a, %d %b %Y %H:%M:%S UTC') if type(event[0]) != datetime else event[0]),event[1][2])
+        naturalTime(datetime.strptime(event[0], dtFormatStr) if type(event[0]) != datetime else event[0]), event[1][2])
         for event in scheduledEvents if getNameFromArgs(*event[1][0:2]) == getNameFromArgs(*argSet[0:2])]
     if len(list(eventStrs)) == 0:
         simpleReply(argSet, u"You don't have any events scheduled!")
     else:
         simpleReply(argSet, u"\n".join(eventStrs))
+
 
 def getAllEvents(argSet, *_):
     """
@@ -612,10 +640,10 @@ def getAllEvents(argSet, *_):
     :type argSet: tuple
     """
     eventStrs = (u"[{}] {} in {}: {}".format(event[0], getNameFromArgs(*event[1][1][0:2]),
-        naturalTime(datetime.strptime(event[1][0], u'%a, %d %b %Y %H:%M:%S UTC')
-        if type(event[0]) != datetime else event[1][0]),event[1][1][2]) for event in enumerate(scheduledEvents))
+        naturalTime(datetime.strptime(event[1][0], dtFormatStr)
+        if type(event[1][0]) != datetime else event[1][0]), event[1][1][2]) for event in enumerate(scheduledEvents))
     finalStr = u"\n".join(eventStrs)
-    if len(finalStr)<9:
+    if len(finalStr) < 9:
         simpleReply(argSet, u"No events have been scheduled.")
     else:
         simpleReply(argSet, finalStr)
@@ -636,6 +664,51 @@ def removeEvent(argSet, index, *_):
         simpleReply(argSet, u"Event at index {} removed.".format(index))
     else:
         simpleReply(argSet, u"You don't have an event scheduled with that index!")
+
+
+def setNick(argSet, user, *nick):
+    """
+    Sets a user's nickname.
+    :param argSet: The set of values passed in to messageListener.
+    :param user: The partial name of the user whose nick is to be set.
+    :param nick: The new nickname.
+    """
+    fullName = getFullUsername(argSet, user, False)
+    chat = getChatName(argSet[3])
+    nick = u" ".join(nick)
+    if fullName is not None:
+        if chat not in nicks:
+            nicks[chat] = {}
+        nicks[chat][fullName] = nick
+        simpleReply(argSet, u"{}'s nickname set to \"{}\".".format(fullName, nick))
+        updateFile(u"nicks.json", nicks)
+    else:
+        simpleReply(argSet, u"No user by the name {} found.".format(user))
+
+def removeNick(argSet, user):
+    """
+    Removes the nickname from a user.
+    :param argSet: The set of values passed in to messageListener.
+    :param user: The partial name of the user whose nick is to be removed.
+    """
+    fullName = getFullUsername(argSet, user)
+    chat = getChatName(argSet[3])
+    if chat not in nicks:
+        nicks[chat] = {}
+    nicks[chat].pop(fullName)
+    simpleReply(argSet, u"{}'s nickname removed.".format(fullName))
+    updateFile(u"nicks.json", nicks)
+
+def getNicks(argSet):
+    """
+    Returns all of the nicknames.
+    :param argSet: The set of values passed in to messageListener.
+    """
+    chat = getChatName(argSet[3])
+    if chat not in nicks:
+        simpleReply(argSet,u"No nicks have been set in this chat yet!")
+        return
+    simpleReply(argSet, u"" + pformat(nicks[chat] or {}))
 
 
 dice = [u"0⃣", u"1⃣", u"2⃣", u"3⃣", u"4⃣", u"5⃣", u"6⃣", u"7⃣", u"8⃣", u"9⃣️⃣️"]  # 1-9 in emoji form
@@ -686,11 +759,12 @@ def to(argSet, *args):
         simpleReply(argSet, u"You need to provide some arguments!")
         return
     user = args[-1]
-    name = getFullUsername(argSet, user)
+    name = getFullUsername(argSet, user, False)
+    nick = getFullUsername(argSet, user, True) or name
     if name is not None:
         simpleReply(argSet,
             replaceAliasVars(argSet, argSet[2][len(commandDelimiter) + 3:argSet[2].rfind(u" ")]).replace(u"%target",
-                name))
+                nick))
     else:
         simpleReply(argSet, u"No user containing {} found.".format(user))
 
@@ -720,14 +794,14 @@ commands = {  # A dict containing the functions to run when a given command is e
     u"aliases": lambda argSet, *_: simpleReply(argSet,
         "Valid aliases: {}".format(u", ".join(aliases[getChatName(argSet[3])].keys())).replace(u"u'", u"'")),
     u"me": lambda argSet, *_: simpleReply(argSet, u"*{} {}.".format(
-        purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(*argSet[:2])), argSet[2][3 + len(commandDelimiter):])),
+        getNameFromArgs(argSet[0], argSet[1], argSet[3]), argSet[2][3 + len(commandDelimiter):])),
     u"botme": lambda argSet, *_: simpleReply(argSet, u"*{} {}.".format(purple.PurpleAccountGetAlias(argSet[0]),
         argSet[2][6 + len(commandDelimiter):])),
     u"randomemoji": lambda argSet, amt=1, *_: simpleReply(argSet, u"".join(
         [emojis.values()[randint(0, len(emojis) - 1)] for _ in range(int(amt) or 1)])),
     u"mimic": Mimic,
     u"users": lambda argSet, *_: simpleReply(argSet, emojize(str(
-        [purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(argSet[0], purple.PurpleConvChatCbGetName(user))) for user in
+        [getNameFromArgs(argSet[0], purple.PurpleConvChatCbGetName(user)) for user in
             purple.PurpleConvChatGetUsers(purple.PurpleConvChat(argSet[3]))][:-1]), use_aliases=True)),
     u"loc": loc,
     u"gds": lambda argSet, *_: Loc(argSet, time=argSet[2][len(commandDelimiter) + 4:]),
@@ -741,7 +815,10 @@ commands = {  # A dict containing the functions to run when a given command is e
     u"schedule": scheduleEvent,
     u"events": getEvents,
     u"allevents": getAllEvents,
-    u"unschedule": removeEvent
+    u"unschedule": removeEvent,
+    u"nicks": getNicks,
+    u"setnick": setNick,
+    u"removenick": removeNick
 }
 
 helpText = {  # The help text for each command.
@@ -779,8 +856,11 @@ helpText = {  # The help text for each command.
     u"schedule": u"Runs a command after the specified amount of time.",
     u"events": u"Lists all of the events you have scheduled.",
     u"allevents": u"Lists all scheduled events.",
-    u"unschedule": "Unschedules the event with the given index. (The index should be from {}events)".format(
-        commandDelimiter)
+    u"unschedule": u"Unschedules the event with the given index. (The index should be from {}events)".format(
+        commandDelimiter),
+    u"nicks": u"Lists the nicknames of all users in the chat. If they don't have one, their name will not show up!",
+    u"setnick": u"Changes the nickname of the specified user.",
+    u"removenick": u"Removes a user's nickname."
 }
 
 
@@ -924,7 +1004,7 @@ purple.ReceivedImMsg.connect(messageListener)
 purple.ReceivedChatMsg.connect(messageListener)
 
 
-def periodicLoop():
+def periodicLoop(threshold=timedelta(minutes=5)):
     """
     Used for any tasks that may need to run in the background.
 
@@ -934,11 +1014,11 @@ def periodicLoop():
     eventRemoved = False
     for event in scheduledEvents:
         if isinstance(event[0], (str, unicode)):  # If it's reading it from the serialized version...
-            eventTime = datetime.strptime(event[0], u'%a, %d %b %Y %H:%M:%S UTC')  # Convert it back to a datetime
+            eventTime = datetime.strptime(event[0], dtFormatStr)  # Convert it back to a datetime
         else:
             eventTime = event[0]
         if timedelta() < now() - eventTime:  # If the event is due to be scheduled...
-            if now() - eventTime < timedelta(minutes=5):  # Make sure the event was supposed to be run
+            if now() - eventTime < max(threshold, timedelta(seconds=5)):  # Make sure the event was supposed to be run
                 # less than 5 minutes before now, otherwise, don't run the function, but still discard of it.
                 try:
                     messageListener(*event[1])
