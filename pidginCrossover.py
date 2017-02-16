@@ -3,7 +3,7 @@
 
 # emoji, humanize, parsedatetime, pydbus and PyGObject are dependencies.
 # "sudo pip install emoji pygobject humanize parsedatetime pydbus --upgrade" will do that for you.
-from __future__ import print_function # This does not break Python 3 compatibility.
+from __future__ import print_function  # This does not break Python 3 compatibility.
 
 from datetime import datetime, timedelta
 from json import dumps, loads
@@ -98,7 +98,7 @@ def getNameFromArgs(act, name, conv=None):
     chat = None  # This is here so PyCharm doesn't complain about chat not existing in the return statement.
     if conv is not None:
         chat = getChatName(conv)
-    return nicks[chat].get(realName, realName) if conv is not None else realName
+    return nicks[chat].get(realName, realName) if conv is not None and chat in nicks else realName
 
 
 getChatName = lambda chatId: purple.PurpleConversationGetTitle(chatId)  # Gets the name of a chat given the chat's ID.
@@ -202,7 +202,10 @@ def replaceAliasVars(argSet, message):
     """
     newMsg = message  # Don't touch the original
     for i in aliasVars:
-        newMsg = newMsg.replace(i[0], i[1](argSet))
+        try:
+            newMsg = newMsg.replace(i[0], i[1](argSet))
+        except:
+            pass
     return newMsg
 
 
@@ -890,14 +893,15 @@ def runCommand(argSet, command, *args):
     elif command in aliases[chat]:
         message = argSet[2]
         msgLow = message.lower()
+        cmd = aliases[chat][command]
         command = message[len(commandDelimiter):message.find(u" ") if u" " in message else len(message)].lower()
+        # Swap the command for the right one
         message = message[:msgLow.find(command)] + command + message[msgLow.find(command) + len(command):]
-        newMsg = replaceAliasVars(argSet, (message + (u" ".join(tuple(args)) if len(
-            tuple(aliases[chat][command][1][len(commandDelimiter):])) > 0 else u"")).replace(command,
-            aliases[chat][command][0]))
-        commands[aliases[chat][command][1][0]]((argSet[0], argSet[1], newMsg, argSet[3], argSet[4]), *(
-            (tuple(args)[:len(tuple(args)) // 2] if len(
-                tuple(aliases[chat][command][1][len(commandDelimiter):])) > 0 else ())))  # Run the alias's command
+        # Get the extra arguments to the function and append them at the end.
+        extraArgs = (tuple(args) if len(tuple(cmd[1][len(commandDelimiter):])) > 0 else ())
+        newMsg = replaceAliasVars(argSet, message.replace(command, cmd[0]))
+        print(extraArgs, newMsg)
+        commands[cmd[1][0]]((argSet[0], argSet[1], newMsg, argSet[3], argSet[4]), *extraArgs)  # Run the alias's command
         return True
     return False
 
