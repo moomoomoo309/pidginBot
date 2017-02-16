@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 # coding: UTF-8
 
-# emoji, humanize and PyGObject are dependencies. "pip install emoji pygobject humanize --upgrade" will do that for you.
-from __future__ import print_function
+# emoji, humanize, parsedatetime, pydbus and PyGObject are dependencies.
+# "sudo pip install emoji pygobject humanize parsedatetime pydbus --upgrade" will do that for you.
+from __future__ import print_function # This does not break Python 3 compatibility.
 
 from datetime import datetime, timedelta
 from json import dumps, loads
@@ -94,6 +95,7 @@ def getNameFromArgs(act, name, conv=None):
     :return: The user's nickname, or their actual name if no nick was found.
     """
     realName = purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(act, name))
+    chat = None  # This is here so PyCharm doesn't complain about chat not existing in the return statement.
     if conv is not None:
         chat = getChatName(conv)
     return nicks[chat].get(realName, realName) if conv is not None else realName
@@ -417,12 +419,12 @@ def getFullUsername(argSet, partialName, nick=True):
     # Check the beginning first, otherwise, check if the partialname is somewhere in the name.
     name = (next((names[i] for i in range(len(names)) if names[i][0:len(partialName)].lower() == partialName.lower()),
         None) or next((names[i] for i in range(len(names)) if partialName.lower() in names[i].lower()), None))
-    if nick and name is not None and u""+name in nicks[chat]:
-        return nicks[chat][u""+name]
+    if nick and name is not None and u"" + name in nicks[chat]:
+        return nicks[chat][u"" + name]
     return name
 
 
-def getUserFromName(argSet, partialName, nick = True):
+def getUserFromName(argSet, partialName, nick=True):
     """
     Returns the "name" of a user given their partial name.
 
@@ -430,6 +432,8 @@ def getUserFromName(argSet, partialName, nick = True):
     :type argSet: tuple
     :param partialName: The partial name of a user.
     :type partialName: unicode
+    :param nick: Whether or not it should check nicknames.
+    :type nick: bool
     :return: A user's "name".
     :rtype: unicode
     """
@@ -440,8 +444,8 @@ def getUserFromName(argSet, partialName, nick = True):
     # Check the beginning first, otherwise, check if the partialname is somewhere in the name.
     name = (next((buddies[i] for i in range(len(names)) if names[i][0:len(partialName)].lower() == partialName.lower()),
         None) or next((buddies[i] for i in range(len(names)) if partialName.lower() in names[i].lower()), None))
-    if nick and name is not None and u""+name in nicks[chat]:
-        return nicks[chat][u""+name]
+    if nick and name is not None and u"" + name in nicks[chat]:
+        return nicks[chat][u"" + name]
     return name
 
 
@@ -685,6 +689,7 @@ def setNick(argSet, user, *nick):
     else:
         simpleReply(argSet, u"No user by the name {} found.".format(user))
 
+
 def removeNick(argSet, user):
     """
     Removes the nickname from a user.
@@ -699,6 +704,7 @@ def removeNick(argSet, user):
     simpleReply(argSet, u"{}'s nickname removed.".format(fullName))
     updateFile(u"nicks.json", nicks)
 
+
 def getNicks(argSet):
     """
     Returns all of the nicknames.
@@ -706,7 +712,7 @@ def getNicks(argSet):
     """
     chat = getChatName(argSet[3])
     if chat not in nicks:
-        simpleReply(argSet,u"No nicks have been set in this chat yet!")
+        simpleReply(argSet, u"No nicks have been set in this chat yet!")
         return
     simpleReply(argSet, u"" + pformat(nicks[chat] or {}))
 
@@ -793,8 +799,8 @@ commands = {  # A dict containing the functions to run when a given command is e
     u"unalias": removeAlias,
     u"aliases": lambda argSet, *_: simpleReply(argSet,
         "Valid aliases: {}".format(u", ".join(aliases[getChatName(argSet[3])].keys())).replace(u"u'", u"'")),
-    u"me": lambda argSet, *_: simpleReply(argSet, u"*{} {}.".format(
-        getNameFromArgs(argSet[0], argSet[1], argSet[3]), argSet[2][3 + len(commandDelimiter):])),
+    u"me": lambda argSet, *_: simpleReply(argSet, replaceAliasVars(argSet, u"*{} {}.".format(
+        getNameFromArgs(argSet[0], argSet[1], argSet[3]), argSet[2][3 + len(commandDelimiter):]))),
     u"botme": lambda argSet, *_: simpleReply(argSet, u"*{} {}.".format(purple.PurpleAccountGetAlias(argSet[0]),
         argSet[2][6 + len(commandDelimiter):])),
     u"randomemoji": lambda argSet, amt=1, *_: simpleReply(argSet, u"".join(
@@ -883,14 +889,14 @@ def runCommand(argSet, command, *args):
         return True
     elif command in aliases[chat]:
         message = argSet[2]
+        msgLow = message.lower()
         command = message[len(commandDelimiter):message.find(u" ") if u" " in message else len(message)].lower()
-        message = message[:message.lower().find(command)] + command + message[
-        message.lower().find(command) + len(command):]
+        message = message[:msgLow.find(command)] + command + message[msgLow.find(command) + len(command):]
         newMsg = replaceAliasVars(argSet, (message + (u" ".join(tuple(args)) if len(
             tuple(aliases[chat][command][1][len(commandDelimiter):])) > 0 else u"")).replace(command,
             aliases[chat][command][0]))
         commands[aliases[chat][command][1][0]]((argSet[0], argSet[1], newMsg, argSet[3], argSet[4]), *(
-            (tuple(args) if len(
+            (tuple(args)[:len(tuple(args)) // 2] if len(
                 tuple(aliases[chat][command][1][len(commandDelimiter):])) > 0 else ())))  # Run the alias's command
         return True
     return False
@@ -962,7 +968,7 @@ def messageListener(account, sender, message, conversation, flags):
     # Strip HTML from Hangouts messages.
     message = purple.PurpleMarkupStripHtml(message) if message.startswith(u"<") else message
 
-    nick = purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(account, sender))  # Name which will appear on the log.
+    nick = getNameFromArgs(account, sender)  # Name which will appear on the log.
 
     try:  # Logs messages. Logging errors will not prevent commands from working.
         log(u"{}: {}\n".format(nick, (u"" + str(message))))
