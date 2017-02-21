@@ -17,7 +17,7 @@ from humanize import naturaldelta, naturaltime
 from pydbus import SessionBus
 from parsedatetime import Calendar as datetimeParser
 from time import strptime
-from pprint import pformat
+from six import string_types
 
 
 # Utility Functions:
@@ -27,7 +27,7 @@ def readFile(path):
     Reads, then parses the file at the given path as json.
 
     :param path: The file path of the file.
-    :type path: unicode
+    :type path: string_types
     :return: The file parsed as json.
     """
     try:
@@ -59,7 +59,7 @@ def getChats():
         info = (purple.PurpleConversationGetAccount(i), purple.PurpleConversationGetTitle(i))
         if info not in chatIDs or chatIDs[info] < i <= 10000 or purple.PurpleConversationGetType(i) != 2:
             chatIDs[info] = i
-    return chatIDs.values()
+    return tuple(chatIDs.values())
 
 
 def updateFile(path, value):
@@ -67,9 +67,9 @@ def updateFile(path, value):
     Replaces the contents of the file at the given path with the given value.
 
     :param path: The file path of the file to overwrite.
-    :type path: unicode
-    :param value: The unicode string to overwrite the file with.
-    :type value: unicode
+    :type path: string_types
+    :param value: The string_types string to overwrite the file with.
+    :type value: string_types
     """
 
     def serializeDate(string):
@@ -109,14 +109,14 @@ def getTime(currTime):
     Given a natural time string, such as "in 30 minutes", returns that time as a datetime object.
 
     :param currTime: A natural time string, such as "in 30 minutes" or "7 PM".
-    :type currTime: unicode
+    :type currTime: string_types
     :return: The natural time as a datetime object.
     :rtype: datetime
     """
     return parser.parseDT(currTime)[0]
 
 
-getCommands = lambda argSet: u"Valid Commands: {}, Valid Aliases: {}".format(u", ".join(sorted(commands.keys())),
+getCommands = lambda argSet: u"Valid Commands: {}\n\nValid Aliases: {}".format(u", ".join(sorted(commands.keys())),
     u", ".join(sorted(aliases[getChatName(argSet[3])].keys())))  # Returns a list of all of the commands.
 
 
@@ -125,7 +125,7 @@ def getFullConvName(partialName):
     Returns a full conversation title given a partial title.
 
     :param partialName: The incomplete name of the conversation.
-    :type partialName: unicode
+    :type partialName: string_types
     :return: The conversation ID.
     :rtype: int
     """
@@ -146,7 +146,7 @@ def simpleReply(argSet, message):
     :param argSet: The set of values passed in to messageListener.
     :type argSet: tuple
     :param message: The message to send out.
-    :type message: unicode
+    :type message: string_types
     """
     sendMessage(argSet[-2], argSet[-2], u"", message)  # Replies to a chat
 
@@ -161,7 +161,7 @@ logStr = lambda string: logFile.write(str(u"[{}] {}\n".format(now().isoformat(),
 log = lambda string: [fct(string + u"\n") for fct in (print, logStr)]  # Prints and writes to the log file.
 
 # Returns what it says on the tin.
-isListButNotString = lambda obj: isinstance(obj, (list, tuple, set)) and not isinstance(obj, (str, unicode))
+isListButNotString = lambda obj: isinstance(obj, (list, tuple, set)) and not isinstance(obj, string_types)
 # ---------------------------------------
 
 # Read files for persistent values.
@@ -171,6 +171,7 @@ messageLinks, puns, aliases, atLoc, scheduledEvents, nicks = readFiles(u"message
 
 commandDelimiter = u"!"  # What character(s) the commands should start with.
 lastMessage = u""  # The last message, to prevent infinite looping.
+lastArgset = () # The last argSet, to try to prevent looping.
 now = datetime.now
 lastMessageTime = now()
 parser = datetimeParser()
@@ -196,9 +197,9 @@ def replaceAliasVars(argSet, message):
     :param argSet: The set of values passed in to messageListener.
     :type argSet: tuple
     :param message: The message to replace. Will not use the message in argSet.
-    :type message: unicode
+    :type message: string_types
     :return The message, with all of the alias variables replaced.
-    :rtype unicode
+    :rtype string_types
     """
     newMsg = message  # Don't touch the original
     for i in aliasVars:
@@ -216,9 +217,9 @@ def getPun(argSet, punFilter):
     :param argSet: The set of values passed in to messageListener.
     :type argSet: tuple
     :param punFilter: A string filtering the puns out.
-    :type punFilter: unicode
+    :type punFilter: string_types
     :return: A random pun from puns.json.
-    :rtype unicode
+    :rtype string_types
     """
     chat = getChatName(argSet[3])
     puns[chat] = puns[chat] if chat in puns else []
@@ -237,10 +238,10 @@ def Help(argSet, page=u"", *_):
 
     :param argSet: The set of values passed in to messageListener.
     :type argSet: tuple
-    :param page: The page number it should be on, as a unicode string.
-    :type page: unicode
+    :param page: The page number it should be on, as a string_types string.
+    :type page: string_types
     """
-    iteratableCommands = commands.keys()  # A tuple containing all of the keys in iteratableCommands.
+    iteratableCommands = tuple(commands.keys())  # A tuple containing all of the keys in iteratableCommands.
     commandsPerPage = 10  # How many commands to show per page.
     cmd = page[len(commandDelimiter):] if page.startswith(commandDelimiter) else page
     if cmd and cmd.lower() in helpText:  # If the help text for a given command was asked for
@@ -265,7 +266,7 @@ def Link(argSet, chat, *chats):
     :param argSet: The set of values passed in to messageListener.
     :type argSet: tuple
     :param chat: The partial name of the chat to link the current chat to.
-    :type chat: unicode
+    :type chat: string_types
     :param chats: A list of all of the chats available.
     :type chats: tuple
     """
@@ -288,7 +289,7 @@ def Unlink(argSet, chat, *chats):
     :param argSet: The set of values passed in to messageListener.
     :type argSet: tuple
     :param chat: The partial name of the chat to unlink from the current chat.
-    :type chat: unicode
+    :type chat: string_types
     :param chats: A list of all of the chats available.
     :type chats: tuple
     """
@@ -316,7 +317,7 @@ def addPun(argSet, pun):
     :param argSet: The set of values passed in to messageListener.
     :type argSet: tuple
     :param pun: The pun to add to the pun list.
-    :type pun: unicode
+    :type pun: string_types
     """
     chat = getChatName(argSet[3])
     puns[chat] = puns[chat] if chat in puns else []
@@ -332,7 +333,7 @@ def removePun(argSet, pun):
     :param argSet: The set of values passed in to messageListener.
     :type argSet: tuple
     :param pun: The pun to remove from the pun list.
-    :type pun: unicode
+    :type pun: string_types
     """
     chat = getChatName(argSet[3])
     puns[chat] = puns[chat] if chat in puns else []
@@ -386,7 +387,7 @@ def removeAlias(argSet, alias=u"", *_):
     :param argSet: The set of values passed in to messageListener.
     :type argSet: tuple
     :param alias: The alias for the command.
-    :type alias: unicode
+    :type alias: string_types
     """
     chat = getChatName(argSet[3])
     aliases[chat] = aliases[chat] if chat in aliases else {}
@@ -409,11 +410,11 @@ def getFullUsername(argSet, partialName, nick=True):
     :param argSet: The set of values passed in to messageListener.
     :type argSet: tuple
     :param partialName: The partial name of a user.
-    :type partialName: unicode
+    :type partialName: string_types
     :param nick: Whether or not it should return the user's nickname.
     :type nick: bool
     :return: A user's alias.
-    :rtype: unicode
+    :rtype: string_types
     """
     chat = getChatName(argSet[3])
     buddies = [purple.PurpleConvChatCbGetName(user) for user in
@@ -434,19 +435,20 @@ def getUserFromName(argSet, partialName, nick=True):
     :param argSet: The set of values passed in to messageListener.
     :type argSet: tuple
     :param partialName: The partial name of a user.
-    :type partialName: unicode
+    :type partialName: string_types
     :param nick: Whether or not it should check nicknames.
     :type nick: bool
     :return: A user's "name".
-    :rtype: unicode
+    :rtype: string_types
     """
     chat = getChatName(argSet[3])
     buddies = [purple.PurpleConvChatCbGetName(user) for user in
         purple.PurpleConvChatGetUsers(purple.PurpleConvChat(argSet[3]))][:-1]
     names = [getNameFromArgs(argSet[0], buddy) for buddy in buddies]
+    rng = range(len(names))
     # Check the beginning first, otherwise, check if the partialname is somewhere in the name.
-    name = (next((buddies[i] for i in range(len(names)) if names[i][0:len(partialName)].lower() == partialName.lower()),
-        None) or next((buddies[i] for i in range(len(names)) if partialName.lower() in names[i].lower()), None))
+    name = (next((buddies[i] for i in rng if names[i][:len(partialName)].lower() == partialName.lower()), None) or
+            next((buddies[i] for i in rng if partialName.lower() in names[i].lower()), None))
     if nick and name is not None and u"" + name in nicks[chat]:
         return nicks[chat][u"" + name]
     return name
@@ -459,9 +461,9 @@ def Mimic(argSet, user=None, firstWordOfCmd=None, *_):
     :param argSet: The set of values passed in to messageListener.
     :type argSet: tuple
     :param user: The partial name of the user to mimic.
-    :type user: unicode
+    :type user: string_types
     :param firstWordOfCmd: The first word of the command to run, for syntax checking.
-    :type firstWordOfCmd: unicode
+    :type firstWordOfCmd: string_types
     """
     if user is None or firstWordOfCmd is None:
         simpleReply(argSet, u"You need to specify the user to mimic and the command to mimic!")
@@ -496,9 +498,9 @@ def Loc(argSet, time=u"30 minutes", location=u"GDS"):
     :param argSet: The set of values passed in to messageListener.
     :type argSet: tuple
     :param time: The time in which you will be staying at the location.
-    :type time: unicode
+    :type time: string_types
     :param location: The location you're going to.
-    :type location: unicode
+    :type location: string_types
     """
     chat = getChatName(argSet[3])
     time = time if len(time) != 0 else u"30 minutes"
@@ -555,8 +557,8 @@ def AtLoc(argSet, *_):
         """
         Converts the serialized datetime back to a datetime object, or uses now otherwise.
 
-        :param string: The serialized datetime, as a unicode string.
-        :type string: unicode
+        :param string: The serialized datetime, as a string_types string.
+        :type string: string_types
         :return: The unserialized string, as a datetime object.
         :rtype datetime
         """
@@ -569,10 +571,10 @@ def AtLoc(argSet, *_):
 
     def toDelta(string):
         """
-        Converts a serialized unicode string back into a datetime object.
+        Converts a serialized string_types string back into a datetime object.
 
-        :param string: The serialized unicode string.
-        :type string: unicode
+        :param string: The serialized string_types string.
+        :type string: string_types
         :return: The serialized string, as a datetime object.
         :rtype: timedelta
         """
@@ -646,7 +648,7 @@ def getAllEvents(argSet, *_):
     :param argSet: The set of values passed in to messageListener.
     :type argSet: tuple
     """
-    eventStrs = (u"[{}] {} in {}: {}".format(event[0], getNameFromArgs(*event[1][1][0:2]),
+    eventStrs = (u"[{}] {} {}: {}".format(event[0], getNameFromArgs(*event[1][1][0:2]),
         naturalTime(datetime.strptime(event[1][0], dtFormatStr)
         if type(event[1][0]) != datetime else event[1][0]), event[1][1][2]) for event in enumerate(scheduledEvents))
     finalStr = u"\n".join(eventStrs)
@@ -717,7 +719,8 @@ def getNicks(argSet):
     if chat not in nicks:
         simpleReply(argSet, u"No nicks have been set in this chat yet!")
         return
-    simpleReply(argSet, u"" + pformat(nicks[chat] or {}))
+    prettyFormat = lambda myDict: u"\n".join(str(a) + u": " + str(b) for a, b in myDict.items())
+    simpleReply(argSet, u"" + prettyFormat(nicks[chat] or {}))
 
 
 dice = [u"0⃣", u"1⃣", u"2⃣", u"3⃣", u"4⃣", u"5⃣", u"6⃣", u"7⃣", u"8⃣", u"9⃣️⃣️"]  # 1-9 in emoji form
@@ -728,12 +731,12 @@ def numToEmoji(s):
     Replaces numbers with emojis.
 
     :param s: The string to replace the numbers of with emojis.
-    :type s: unicode
+    :type s: string_types
     :return: The provided string with its numbers replaced with emojis.
-    :rtype: unicode
+    :rtype: string_types
     """
     for i in range(len(dice)):
-        s = s.replace(u"" + str(i), dice[i])  # Force unicode strings for Python 2 and Python 3.
+        s = s.replace(u"" + str(i), dice[i])  # Force string_types strings for Python 2 and Python 3.
     return s
 
 
@@ -744,7 +747,7 @@ def diceRoll(argSet, diceStr="", *_):
     :param argSet: The set of values passed in to messageListener.
     :type argSet: tuple
     :param diceStr: The string used to specify the type of dice, in the form [numDice]d[diceSides]
-    :type diceStr: unicode
+    :type diceStr: string_types
     """
     numDice, numSides = 1, 6  # Defaults to 1d6
     if u"d" in diceStr.lower():
@@ -771,9 +774,9 @@ def to(argSet, *args):
     name = getFullUsername(argSet, user, False)
     nick = getFullUsername(argSet, user, True) or name
     if name is not None:
+        msg = argSet[2]
         simpleReply(argSet,
-            replaceAliasVars(argSet, argSet[2][len(commandDelimiter) + 3:argSet[2].rfind(u" ")]).replace(u"%target",
-                nick))
+            replaceAliasVars(argSet, msg[len(commandDelimiter) + 3:msg.rfind(u" ")]).replace(u"%target", nick))
     else:
         simpleReply(argSet, u"No user containing {} found.".format(user))
 
@@ -807,7 +810,7 @@ commands = {  # A dict containing the functions to run when a given command is e
     u"botme": lambda argSet, *_: simpleReply(argSet, u"*{} {}.".format(purple.PurpleAccountGetAlias(argSet[0]),
         argSet[2][6 + len(commandDelimiter):])),
     u"randomemoji": lambda argSet, amt=1, *_: simpleReply(argSet, u"".join(
-        [emojis.values()[randint(0, len(emojis) - 1)] for _ in range(int(amt) or 1)])),
+        [tuple(emojis.values())[randint(0, len(emojis) - 1)] for _ in range(int(amt) or 1)])),
     u"mimic": Mimic,
     u"users": lambda argSet, *_: simpleReply(argSet, emojize(str(
         [getNameFromArgs(argSet[0], purple.PurpleConvChatCbGetName(user)) for user in
@@ -880,7 +883,7 @@ def runCommand(argSet, command, *args):
     :param argSet: The set of values passed in to messageListener.
     :type argSet: tuple
     :param command: The command to run.
-    :type command: unicode
+    :type command: string_types
     :return: If the given command could be run, either as a command or an alias.
     :rtype: bool
     """
@@ -900,7 +903,6 @@ def runCommand(argSet, command, *args):
         # Get the extra arguments to the function and append them at the end.
         extraArgs = (tuple(args) if len(tuple(cmd[1][len(commandDelimiter):])) > 0 else ())
         newMsg = replaceAliasVars(argSet, message.replace(command, cmd[0]))
-        print(extraArgs, newMsg)
         commands[cmd[1][0]]((argSet[0], argSet[1], newMsg, argSet[3], argSet[4]), *extraArgs)  # Run the alias's command
         return True
     return False
@@ -915,9 +917,9 @@ def sendMessage(sending, receiving, nick, message):
     :param receiving: The id of the receiving chat.
     :type receiving: int
     :param nick: The nickname of the user, for logging purposes
-    :type nick: unicode
+    :type nick: string_types
     :param message: The message to send out.
-    :type message: unicode
+    :type message: string_types
     """
     if receiving is None:  # If the conversation can't be found by libpurple, it'll just error anyway.
         return
@@ -939,12 +941,10 @@ def sendMessage(sending, receiving, nick, message):
     try:  # Logging errors should not break things.
         # Removes emojis from messages, not all consoles support emoji, and not all files like emojis written to them.
         log(demojize(u"[{}] Sent \"{}\" from {} ({}) to {} ({}).".format(now().isoformat(),
-            (nick + u": " + message if nick else message),
-            sendTitle, sending, receiveTitle, conv)))  # Sent "message" from chat 1 (chat ID) to chat 2 (chat ID).
+            (nick + u": " + message if nick else message), sendTitle, sending, receiveTitle, conv)))
         logFile.flush()  # Update the log since it's been written to.
     except UnicodeError:
         pass
-
 
 def messageListener(account, sender, message, conversation, flags):
     """
@@ -953,22 +953,26 @@ def messageListener(account, sender, message, conversation, flags):
     :param account: The account the message was received on.
     :type account: int
     :param sender: The name of the chat the message was sent from.
-    :type sender: unicode
+    :type sender: string_types
     :param message: The received message.
-    :type message: unicode
+    :type message: string_types
     :param conversation: The conversation in which this message was received.
     :type conversation: int
     :param flags: Any flags for this message, such as the type of message.
     :type flags: tuple
     """
     global lastMessageTime
+    global lastArgset
+    argSet = (account, sender, message, conversation, flags)
     if purple.PurpleAccountGetUsername(account) == sender:
         return
-    elif now() - lastMessageTime < timedelta(seconds=.1):
+    elif now() - lastMessageTime < timedelta(seconds=.1) or lastArgset == argSet:
         print(u"Overflow!", account, sender, message, conversation, flags)  # Debug stuff
         lastMessageTime = now()
+        lastArgset = argSet
         return
     lastMessageTime = now()
+    lastArgset = argSet
     # Strip HTML from Hangouts messages.
     message = purple.PurpleMarkupStripHtml(message) if message.startswith(u"<") else message
 
@@ -983,7 +987,6 @@ def messageListener(account, sender, message, conversation, flags):
     if message[0:len(commandDelimiter)] == commandDelimiter:
         command = message[len(commandDelimiter):message.find(u" ") if u" " in message else len(message)].lower()
         args = message.split(u" ")[1:]
-        argSet = (account, sender, message, conversation, flags)
         if not runCommand(argSet, command.lower(), *args):
             simpleReply(argSet, u"Command/alias \"{}\" not found. {}".format(
                 command, getCommands(argSet)))
@@ -1023,7 +1026,7 @@ def periodicLoop(threshold=timedelta(minutes=5)):
     """
     eventRemoved = False
     for event in scheduledEvents:
-        if isinstance(event[0], (str, unicode)):  # If it's reading it from the serialized version...
+        if isinstance(event[0], string_types):  # If it's reading it from the serialized version...
             eventTime = datetime.strptime(event[0], dtFormatStr)  # Convert it back to a datetime
         else:
             eventTime = event[0]

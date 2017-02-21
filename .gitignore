@@ -87,3 +87,32 @@ ENV/
 
 # Rope project settings
 .ropeproject
+.floo
+.flooignore
+.idea/dictionaries/
+.idea/inspectionProfiles/
+.idea/markdown-navigator.xml
+.idea/markdown-navigator/
+.idea/misc.xml
+.idea/modules.xml
+.idea/pidginBot.iml
+.idea/vcs.xml
+.idea/workspace (DESKTOP-5SIMDLJ's conflicted copy 2016-11-10).xml
+.idea/workspace (DESKTOP-5SIMDLJ's conflicted copy 2016-11-13).xml
+.idea/workspace.xml
+.purple/
+Aliases (nicky-VirtualBox's conflicted copy 2016-11-29).json
+Aliases - Copy.json
+Aliases.json
+Puns - Copy.json
+Puns.json
+Purple Object Properties.txt
+atLoc (DESKTOP-5SIMDLJ's conflicted copy 2016-11-13).json
+atLoc - Copy.json
+atLoc.json
+messageLinks.json
+nicks.json
+pidginCrossover.sublime-project
+pidginCrossover.sublime-workspace
+scheduledEvents.json
+simplePidginScript.py
