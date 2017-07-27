@@ -6,6 +6,7 @@
 from __future__ import print_function  # This does not break Python 3 compatibility.
 
 import traceback
+import re
 from datetime import datetime, timedelta
 from json import dumps, loads
 from math import ceil
@@ -16,15 +17,27 @@ from emoji import demojize, emojize  # This dependency is 👍
 from emoji.unicode_codes import UNICODE_EMOJI as emojis
 from gi.repository import GObject, GLib
 from humanize import naturaldelta, naturaltime
-from os import mkfifo
+from os import mkfifo, _exit
 from pydbus import SessionBus
 from parsedatetime import Calendar as datetimeParser
 from time import strptime, sleep
 from six import string_types
+from youtube_dl import YoutubeDL as ydl
 
 
 # Utility Functions:
 # -----------------------------------------------
+def dump(obj):
+    """
+    Dumps an object's properties into the console.
+    :param obj: The object to dump
+    :return: Nothing, it's printed to the console.
+    """
+    for attr in dir(obj):
+        if hasattr(obj, attr):
+            print("obj.%s = %s" % (attr, getattr(obj, attr)))
+
+
 def readFile(path):
     """
     Reads, then parses the file at the given path as json.
@@ -194,6 +207,7 @@ dtFormatStr = u"%a, %d %b %Y %H:%M:%S UTC"
 pipePath = u"pidginBotPipe"
 confirmMessage = False
 confirmationListenerProcess = None
+running = True
 
 
 def replaceAliasVars(argSet, message):
@@ -365,6 +379,7 @@ def addAlias(argSet, *_):
     if message == u"":
         return
     command = (message[:message.find(u" ")] if u" " in message else message).lower()
+    command = command[len(commandDelimiter):] if command[:len(commandDelimiter)] == commandDelimiter else command
     argsMsg = message[message.find(u" ") + 1 + len(commandDelimiter):]
     args = [str(arg) for arg in argsMsg.split(u" ")]
     if u" " not in message:  # If the user is asking for the command run by a specific alias.
@@ -400,7 +415,9 @@ def removeAlias(argSet, alias=u"", *_):
     if not alias:
         simpleReply(argSet, u"Enter an alias to remove!")
         return
-    if alias[len(commandDelimiter):] in aliases[chat]:
+    if alias[:len(commandDelimiter)] == commandDelimiter:
+        alias = alias[len(commandDelimiter):]
+    if alias in aliases[chat]:
         aliases[chat].pop(alias[len(commandDelimiter):])
     else:
         simpleReply(argSet, u"No alias \"{}\" found.".format(alias))
@@ -426,6 +443,7 @@ def getFullUsername(argSet, partialName, nick=True):
     buddies = [purple.PurpleConvChatCbGetName(user) for user in
         purple.PurpleConvChatGetUsers(purple.PurpleConvChat(argSet[3]))][:-1]
     names = [getNameFromArgs(argSet[0], buddy) for buddy in buddies]
+    names.append(purple.PurpleAccountGetAlias(argSet[0]))
     rng = range(len(names))
     # Check the beginning first, otherwise, check if the partialname is somewhere in the name.
     name = (next((names[i] for i in rng if names[i][:len(partialName)].lower() == partialName.lower()), None) or
@@ -452,6 +470,7 @@ def getUserFromName(argSet, partialName, nick=True):
     buddies = [purple.PurpleConvChatCbGetName(user) for user in
         purple.PurpleConvChatGetUsers(purple.PurpleConvChat(argSet[3]))][:-1]
     names = [getNameFromArgs(argSet[0], buddy) for buddy in buddies]
+    names.append(purple.PurpleAccountGetAlias(argSet[0]))
     rng = range(len(names))
     # Check the beginning first, otherwise, check if the partialname is somewhere in the name.
     name = (next((buddies[i] for i in rng if names[i][:len(partialName)].lower() == partialName.lower()), None) or
@@ -767,7 +786,10 @@ def exitProcess(code):
     """
     if confirmationListenerProcess is not None:
         confirmationListenerProcess.terminate()
-    exit(code)
+    global running
+    running = False
+    exit(code)  # Okay, close it.
+    _exit(code)  # No, really, close it.
 
 
 def diceRoll(argSet, diceStr="", *_):
@@ -824,11 +846,16 @@ def findNthInstance(n, haystack, needle):
     """
     index = -1
     for i in range(n):
-        index = haystack.find(needle, index+len(needle))
+        index = haystack.find(needle, index + len(needle))
         if index == -1:
             return 0
     return index
 
+def getYTURL(queryMsg):
+    dl = ydl()
+    with dl:
+        info = dl.extract_info(u"ytsearch1:"+queryMsg, download = False)[u"entries"][0]
+        return u"{1} - https://youtube.com/watch?v={0}".format(info[u"id"],info[u"title"])
 
 commands = {  # A dict containing the functions to run when a given command is entered.
     u"help": Help,
@@ -853,7 +880,7 @@ commands = {  # A dict containing the functions to run when a given command is e
     u"alias": addAlias,
     u"unalias": removeAlias,
     u"aliases": lambda argSet, *_: simpleReply(argSet,
-        u"Valid aliases: {}".format(u", ".join(aliases[getChatName(argSet[3])].keys())).replace(u"u'", u"'")),
+        u"Valid aliases: {}".format(u", ".join(sorted(aliases[getChatName(argSet[3])].keys()))).replace(u"u'", u"'")),
     u"me": lambda argSet, *_: simpleReply(argSet, replaceAliasVars(argSet, u"*{} {}.".format(
         getNameFromArgs(argSet[0], argSet[1], argSet[3]), argSet[2][3 + len(commandDelimiter):]))),
     u"botme": lambda argSet, *_: simpleReply(argSet, u"*{} {}.".format(purple.PurpleAccountGetAlias(argSet[0]),
@@ -884,7 +911,8 @@ commands = {  # A dict containing the functions to run when a given command is e
         u"{}, ({})".format(naturalTime(startTime), startTime.strftime("%a, %b %m %Y at %I:%M%p"))),
     u"htmlescape": lambda argSet, *_: simpleReply(argSet, purple.purpleMarkupStripHTML(argSet[2])),
     u"replace": lambda argSet, start, end, *_: simpleReply(argSet,
-        argSet[2][findNthInstance(3, argSet[2], u" ") + 1:].replace(start, end))
+        re.compile(re.escape(start), re.IGNORECASE).sub(end, argSet[2][findNthInstance(3, argSet[2], u" ") + 1:])),
+    u"yt": lambda argSet, *query: simpleReply(argSet, getYTURL(argSet[2]))
 }
 
 helpText = {  # The help text for each command.
@@ -1050,9 +1078,9 @@ def messageListener(account, sender, message, conversation, flags, notOverflow=F
                 simpleReply(argSet, u"Command/alias \"{}\" not found. {}".format(
                     command, getCommands(argSet)))
         except SystemExit:
-            pass
+            return
         except KeyboardInterrupt:
-            pass
+            return
         except:
             simpleReply(argSet, u"Command errored! Error message: \"{}\"".format(traceback.format_exc()))
         return  # Commands are not to be sent out to other chats!
@@ -1110,7 +1138,7 @@ def periodicLoop():
     processEvents()
     if confirmMessage:
         confirmName()
-    return True
+    return running
 
 
 def confirmName():
