@@ -5,4 +5,5 @@ do
 	echo "(Re)starting bot..."
 	python pidginCrossover.py
 	noErr=$?
+    echo "Err = {$noErr}" 
 done

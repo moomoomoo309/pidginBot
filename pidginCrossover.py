@@ -171,7 +171,7 @@ def simpleReply(argSet, message):
 getConvByName = lambda name: next(
     (i for i in getChats() if purple.PurpleConversationGetTitle(i) == name), None)
 
-logFile = open(u"Pidgin_Crossover_Messages.log", mode=u"a")
+logFile = open(u"Pidgin_Crossover_Messages.log", mode="a")
 # Writes a string to the log file.
 logStr = lambda string: logFile.write(str(u"[{}] {}".format(now().isoformat(), demojize(string))))
 log = lambda string: [fct(string + u"") for fct in (print, logStr)]  # Prints and writes to the log file.
@@ -208,6 +208,8 @@ pipePath = u"pidginBotPipe"
 confirmMessage = False
 confirmationListenerProcess = None
 running = True
+mainloop = None
+exitCode = 0
 
 
 def replaceAliasVars(argSet, message):
@@ -261,7 +263,7 @@ def Help(argSet, page=u"", *_):
     :param page: The page number it should be on, as a string_types string.
     :type page: string_types
     """
-    iteratableCommands = tuple(commands.keys())  # A tuple containing all of the keys in iteratableCommands.
+    iteratableCommands = tuple(sorted(commands.keys()))  # A tuple containing all of the keys in iteratableCommands.
     commandsPerPage = 10  # How many commands to show per page.
     cmd = page[len(commandDelimiter):] if page.startswith(commandDelimiter) else page
     if cmd and cmd.lower() in helpText:  # If the help text for a given command was asked for
@@ -269,10 +271,10 @@ def Help(argSet, page=u"", *_):
     elif not page or (page and page.isdigit()):  # If a page number was asked for
         page = int(page) if page and page.isdigit() else 1
         helpStr = u""
-        helpStr += u"Help page {}/{}".format(int(min(page, ceil(1.0 * len(iteratableCommands) / commandsPerPage))),
+        helpStr += u"Help page {}/{}".format(int(min(page, int(ceil(1.0 * len(iteratableCommands) / commandsPerPage)))),
             int(ceil(1.0 * len(iteratableCommands) / commandsPerPage)))
         for i in range(max(0, (page - 1) * commandsPerPage), min(page * commandsPerPage, len(iteratableCommands))):
-            helpStr += u"" + iteratableCommands[i] + u": " + (
+            helpStr += u"\n" + iteratableCommands[i] + u": " + (
                 helpText[iteratableCommands[i]] if iteratableCommands[i] in helpText else u"")
         simpleReply(argSet, helpStr)
     else:
@@ -291,9 +293,9 @@ def Link(argSet, chat, *chats):
     :type chats: tuple
     """
     fullChatName = getFullConvName(chat)
-    fullChatNames = [getFullConvName(chat) for chat in chats]
+    fullChatNames = set([getFullConvName(chat) for chat in chats])
     if fullChatName in messageLinks:
-        messageLinks[fullChatName].append(*fullChatNames)
+        messageLinks[fullChatName].intersection(fullChatNames)
     else:
         messageLinks[fullChatName] = fullChatNames
     if len(messageLinks[fullChatName]) == 1:
@@ -324,8 +326,10 @@ def Unlink(argSet, chat, *chats):
             messageLinks.pop(fullChatName)  # Remove the last message link from this chat.
             simpleReply(argSet, u"{} unlinked from {}.".format(fullName, fullChatName))
             return
-        elif isinstance(messageLinks[fullChatName], dict) and fullName in messageLinks[fullChatName]:
+        elif isListButNotString(messageLinks[fullChatName]) and fullName in messageLinks[fullChatName]:
             removedChats.append(messageLinks[fullChatName].pop(messageLinks[fullChatName].index(fullName)))
+            if len(messageLinks[fullChatName]) == 0:
+                del messageLinks[fullChatName]
     updateFile(u"messageLinks.json", messageLinks)  # Update the messageLinks file.
     simpleReply(argSet, u"{} unlinked from {}.".format(u", ".join(removedChats), fullChatName))
 
@@ -418,7 +422,7 @@ def removeAlias(argSet, alias=u"", *_):
     if alias[:len(commandDelimiter)] == commandDelimiter:
         alias = alias[len(commandDelimiter):]
     if alias in aliases[chat]:
-        aliases[chat].pop(alias[len(commandDelimiter):])
+        aliases[chat].pop(alias)
     else:
         simpleReply(argSet, u"No alias \"{}\" found.".format(alias))
         return
@@ -635,7 +639,7 @@ def AtLoc(argSet, *_):
         now() - toDate(atLoc[chat][name][0]) < toDelta(atLoc[chat][name][2]) and (
             atLoc[chat][name][1] == location or location == u"anywhere")]
     # Write the names to a string.
-    strPeopleAtLoc = u"".join([u"{} went to {} {} ago. ".format(
+    strPeopleAtLoc = u"\n".join([u"{} went to {} {} ago. ".format(
         n, atLoc[chat][n][1], naturalDelta(now() - toDate(atLoc[chat][n][0]))) for n in lastHour])
     if lastHour:
         simpleReply(argSet, strPeopleAtLoc)
@@ -787,9 +791,10 @@ def exitProcess(code):
     if confirmationListenerProcess is not None:
         confirmationListenerProcess.terminate()
     global running
-    running = False
-    exit(code)  # Okay, close it.
-    _exit(code)  # No, really, close it.
+    running = False # Go away, GLib.timeout.
+    mainloop.quit() # Go away, GObject.
+    global exitCode
+    exitCode = code
 
 
 def diceRoll(argSet, diceStr="", *_):
@@ -808,7 +813,7 @@ def diceRoll(argSet, diceStr="", *_):
         numDice = int(diceStr)
     rolls = [randint(1, numSides) for _ in range(numDice)]  # Roll the dice
     simpleReply(argSet,
-        numToEmoji(u"".join(str(s) + u", " for s in rolls) + u"Sum={}, Max={}, Min={}".format(sum(rolls), max(rolls),
+        numToEmoji(u"".join(str(s) + u" " for s in rolls) + u"\nSum={}\nMax={}\nMin={}".format(sum(rolls), max(rolls),
             min(rolls))))
 
 
@@ -851,11 +856,20 @@ def findNthInstance(n, haystack, needle):
             return 0
     return index
 
+
 def getYTURL(queryMsg):
+    """
+    Gets the URL of the first YouTube video when searching for queryMsg.
+    :type queryMsg: string_types
+    :param queryMsg: The search term to use to find the video.
+    :rtype: unicode
+    :return: The URL of the YouTube video, as a unicode string.
+    """
     dl = ydl()
     with dl:
-        info = dl.extract_info(u"ytsearch1:"+queryMsg, download = False)[u"entries"][0]
-        return u"{1} - https://youtube.com/watch?v={0}".format(info[u"id"],info[u"title"])
+        info = dl.extract_info(u"ytsearch1:" + queryMsg, download=False)[u"entries"][0]
+        return u"{1} - https://youtube.com/watch?v={0}".format(info[u"id"], info[u"title"])
+
 
 commands = {  # A dict containing the functions to run when a given command is entered.
     u"help": Help,
@@ -909,10 +923,10 @@ commands = {  # A dict containing the functions to run when a given command is e
     u"removenick": removeNick,
     u"lastreboot": lambda argSet, *_: simpleReply(argSet,
         u"{}, ({})".format(naturalTime(startTime), startTime.strftime("%a, %b %m %Y at %I:%M%p"))),
-    u"htmlescape": lambda argSet, *_: simpleReply(argSet, purple.purpleMarkupStripHTML(argSet[2])),
+    u"htmlescape": lambda argSet, *_: simpleReply(argSet, purple.PurpleMarkupStripHtml(argSet[2][11:])),
     u"replace": lambda argSet, start, end, *_: simpleReply(argSet,
         re.compile(re.escape(start), re.IGNORECASE).sub(end, argSet[2][findNthInstance(3, argSet[2], u" ") + 1:])),
-    u"yt": lambda argSet, *query: simpleReply(argSet, getYTURL(argSet[2]))
+    u"yt": lambda argSet, *query: simpleReply(argSet, getYTURL(argSet[2])),
 }
 
 helpText = {  # The help text for each command.
@@ -956,7 +970,8 @@ helpText = {  # The help text for each command.
     u"setnick": u"Changes the nickname of the specified user.",
     u"removenick": u"Removes a user's nickname.",
     u"lastreboot": u"Returns when the bot was started up.",
-    u"replace": u"Replaces the text in the last argument(s) using the first and second."
+    u"replace": u"Replaces the text in the last argument(s) using the first and second.",
+    u"yt": u"Searches for a YouTube video using the query provided, and replies with the first result's URL."
 }
 
 
@@ -1014,10 +1029,10 @@ def sendMessage(sending, receiving, nick, message):
     # Actually send the messages out.
     if purple.PurpleConversationGetType(receiving) == 2:  # 2 means a group chat.
         conv = purple.PurpleConvChat(receiving)
-        purple.PurpleConvChatSend(conv, (nick + u": " if nick else u"") + emojize(message, True))
+        purple.PurpleConvChatSend(conv, (nick + u": " if nick else u"") + emojize(message, True).replace(u"\n",u"<br>"))
     else:
         conv = purple.PurpleConvIm(receiving)
-        purple.PurpleConvImSend(conv, (nick + u": " if nick else u"") + emojize(message, True))
+        purple.PurpleConvImSend(conv, (nick + u": " if nick else u"") + emojize(message, True).replace(u"\n",u"<br>"))
 
     # I could put this behind debug, but I choose not to. It's pretty enough.
     sendTitle = purple.PurpleConversationGetTitle(sending)
@@ -1244,4 +1259,8 @@ if confirmMessage:
 GObject.threads_init()
 GLib.threads_init()
 GLib.timeout_add_seconds(1, periodicLoop)  # Run periodicLoop once per second.
-GObject.MainLoop().run()  # Actually run the program.
+mainloop = GObject.MainLoop()
+mainloop.run()  # Actually run the program.
+
+exit(exitCode)  # Okay, close it.
+_exit(exitCode)  # No, really, close it.
