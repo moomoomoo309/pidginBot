@@ -18,6 +18,7 @@ from emoji.unicode_codes import UNICODE_EMOJI as emojis
 from gi.repository import GObject, GLib
 from humanize import naturaldelta, naturaltime
 from os import mkfifo, _exit
+from os import system as executeCommand
 from pydbus import SessionBus
 from parsedatetime import Calendar as datetimeParser
 from time import strptime, sleep
@@ -208,7 +209,6 @@ pipePath = u"pidginBotPipe"
 confirmMessage = False
 confirmationListenerProcess = None
 running = True
-mainloop = None
 exitCode = 0
 
 
@@ -452,7 +452,7 @@ def getFullUsername(argSet, partialName, nick=True):
     # Check the beginning first, otherwise, check if the partialname is somewhere in the name.
     name = (next((names[i] for i in rng if names[i][:len(partialName)].lower() == partialName.lower()), None) or
             next((names[i] for i in rng if partialName.lower() in names[i].lower()), None))
-    if nick and name is not None and u"" + name in nicks[chat]:
+    if nick and name is not None and chat in nicks and (u"" + name) in nicks[chat]:
         return nicks[chat][u"" + name]
     return name
 
@@ -479,7 +479,7 @@ def getUserFromName(argSet, partialName, nick=True):
     # Check the beginning first, otherwise, check if the partialname is somewhere in the name.
     name = (next((buddies[i] for i in rng if names[i][:len(partialName)].lower() == partialName.lower()), None) or
             next((buddies[i] for i in rng if partialName.lower() in names[i].lower()), None))
-    if nick and name is not None and u"" + name in nicks[chat]:
+    if nick and name is not None and chat in nicks and (u"" + name) in nicks[chat]:
         return nicks[chat][u"" + name]
     return name
 
@@ -1060,12 +1060,11 @@ def messageListener(account, sender, message, conversation, flags, notOverflow=F
     :type conversation: int
     :param flags: Any flags for this message, such as the type of message.
     :type flags: tuple
-    :param notOverflow: Overrides overflow proetection.
+    :param notOverflow: Overrides overflow protection.
     :type notOverflow: bool
     """
     global lastMessageTime
     argSet = (account, sender, message, conversation, flags)
-    print(argSet)
     if purple.PurpleAccountGetUsername(account) == sender:
         return
     if not notOverflow:
@@ -1116,7 +1115,7 @@ def messageListener(account, sender, message, conversation, flags, notOverflow=F
     lastMessage = nick + u": " + message  # Remember the last message to prevent infinite looping.
 
 
-def processEvents(threshold=timedelta(minutes=5)):
+def processEvents(threshold=timedelta(seconds=2)):
     eventRemoved = False
     for event in scheduledEvents:
         if isinstance(event[0], string_types):  # If it's reading it from the serialized version...
@@ -1124,7 +1123,7 @@ def processEvents(threshold=timedelta(minutes=5)):
         else:
             eventTime = event[0]
         if timedelta() < now() - eventTime:  # If the event is due to be scheduled...
-            if now() - eventTime < max(threshold, timedelta(seconds=5)):  # Make sure the event was supposed to be run
+            if now() - eventTime < min(threshold, timedelta(seconds=5)):  # Make sure the event was supposed to be run
                 # less than 5 seconds before now, otherwise, don't run the function, but still discard of it.
                 try:
                     accounts = purple.PurpleAccountsGetAll()
@@ -1233,8 +1232,9 @@ def confirmationListener():
     except OSError:
         pass  # The pipe already exists
     while True:
-        msgPipe = open(pipePath, u"r")
+        msgPipe = open(pipePath, "r")
         message = msgPipe.read()
+        
         msgPipe.close()
         sleep(.1)
         print(u"Confirmed {}".format(message))
@@ -1243,6 +1243,9 @@ def confirmationListener():
         except ValueError:
             pass  # Invalid JSON can happen when data is left over in the pipe.
 
+def restartFinch():
+    print(u"Restarting Finch...")
+    executeCommand(u"killall finch")
 
 bus = SessionBus()  # Initialize the DBus interface
 purple = bus.get(u"im.pidgin.purple.PurpleService", u"/im/pidgin/purple/PurpleObject")  # Connect to libpurple clients.
@@ -1251,6 +1254,7 @@ purple = bus.get(u"im.pidgin.purple.PurpleService", u"/im/pidgin/purple/PurpleOb
 # Run the message listener for IMs and Chats.
 purple.ReceivedImMsg.connect(queueMessage if confirmMessage else messageListener)
 purple.ReceivedChatMsg.connect(messageListener)
+purple.ConnectionError.connect(restartFinch)
 
 lock = Lock()
 if confirmMessage:
@@ -1261,6 +1265,7 @@ GLib.threads_init()
 GLib.timeout_add_seconds(1, periodicLoop)  # Run periodicLoop once per second.
 mainloop = GObject.MainLoop()
 mainloop.run()  # Actually run the program.
+
 
 exit(exitCode)  # Okay, close it.
 _exit(exitCode)  # No, really, close it.
