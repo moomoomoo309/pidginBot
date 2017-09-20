@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # coding: UTF-8
 
-# emoji, humanize, parsedatetime, pydbus and PyGObject are dependencies.
-# "sudo pip install emoji pygobject humanize parsedatetime pydbus --upgrade" will do that for you.
+# emoji, humanize, parsedatetime, pydbus, youtube-dl, and PyGObject are dependencies.
+# "sudo pip install emoji pygobject humanize parsedatetime pydbus youtube-dl --upgrade" will do that for you.
 from __future__ import print_function  # This does not break Python 3 compatibility.
 
 import traceback
@@ -23,12 +23,6 @@ from parsedatetime import Calendar as datetimeParser
 from time import strptime, sleep
 from six import string_types
 from youtube_dl import YoutubeDL as ydl
-
-import sys
-
-exit = sys.exit
-reload(sys)
-sys.setdefaultencoding("utf-8")
 
 # Utility Functions:
 # -----------------------------------------------
@@ -103,8 +97,9 @@ def updateFile(path, value):
         # The default function allows it to dump datetime objects.
 
 
-naturalTime = lambda time: naturaltime(time + timedelta(seconds=1))  # Fixes rounding errors.
-naturalDelta = lambda time: naturaldelta(time - timedelta(seconds=1))  # Fixes rounding errors.
+# Fixes rounding errors.
+naturalTime = lambda time: naturaltime(time + timedelta(seconds=1))
+naturalDelta = lambda time: naturaldelta(time - timedelta(seconds=1))
 
 
 def getNameFromArgs(act, name, conv=None):
@@ -209,6 +204,7 @@ aliasVars = [  # Replace the string with the result from the lambda below.
 ]
 nicks = nicks or {}
 dtFormatStr = u"%a, %d %b %Y %H:%M:%S UTC"
+dateFormatStr = u"%a, %b %m %Y at %I:%M%p"
 pipePath = u"pidginBotPipe"
 confirmMessage = False
 confirmationListenerProcess = None
@@ -685,8 +681,9 @@ def getEvents(argSet, *_):
     :param argSet: The set of values passed in to messageListener.
     :type argSet: tuple
     """
-    eventStrs = [u"[{}] {}: {}".format(scheduledEvents.index(event),
-        naturalTime(datetime.strptime(event[0], dtFormatStr) if type(event[0]) != datetime else event[0]), event[1][2])
+    eventStrs = [u"[{}] {}: {} ({})".format(scheduledEvents.index(event),
+        naturalTime(datetime.strptime(event[0], dtFormatStr) if type(event[0]) != datetime else event[0]), event[1][2],
+        (datetime.strptime(event[0], dtFormatStr) if type(event[0]) != datetime else event[0]).strftime(dateFormatStr))
         for event in scheduledEvents if getNameFromArgs(argSet[0], *event[1][1:2]) == getNameFromArgs(*argSet[0:2])]
     if len(list(eventStrs)) == 0:
         simpleReply(argSet, u"You don't have any events scheduled!")
@@ -700,14 +697,14 @@ def getAllEvents(argSet, *_):
     :param argSet: The set of values passed in to messageListener.
     :type argSet: tuple
     """
-    eventStrs = (u"[{}] {} {}: {}".format(event[0], getNameFromArgs(argSet[0], *event[1][1][1:2]),
-        naturalTime(datetime.strptime(event[1][0], dtFormatStr)
-        if type(event[1][0]) != datetime else event[1][0]), event[1][1][2]) for event in enumerate(scheduledEvents))
-    finalStr = u"\n".join(eventStrs)
-    if len(finalStr) < 9:
+    eventStrs = [u"[{}] {}: {} ({})".format(scheduledEvents.index(event),
+        naturalTime(datetime.strptime(event[0], dtFormatStr) if type(event[0]) != datetime else event[0]), event[1][2],
+        (datetime.strptime(event[0], dtFormatStr) if type(event[0]) != datetime else event[0]).strftime(dateFormatStr))
+        for event in scheduledEvents]
+    if len(list(eventStrs)) == 0:
         simpleReply(argSet, u"No events have been scheduled.")
     else:
-        simpleReply(argSet, finalStr)
+        simpleReply(argSet, u"\n".join(eventStrs))
 
 
 def removeEvent(argSet, index, *_):
@@ -806,6 +803,9 @@ def exitProcess(code):
     exitCode = code
 
 def restartBot():
+    """
+    Restarts finch and the bot.
+    """
     restartFinch()
     exitProcess(0)
 
@@ -1076,7 +1076,6 @@ def messageListener(account, sender, message, conversation, flags, notOverflow=F
     :param notOverflow: Overrides overflow protection.
     :type notOverflow: bool
     """
-    message = message.decode("utf-8").encode("utf-8")
     global lastMessageTime
     argSet = (account, sender, message, conversation, flags)
     if purple.PurpleAccountGetUsername(account) == sender:
@@ -1248,7 +1247,7 @@ def confirmationListener():
     while True:
         msgPipe = open(pipePath, "r")
         message = msgPipe.read()
-        
+
         msgPipe.close()
         sleep(.1)
         print(u"Confirmed {}".format(message))

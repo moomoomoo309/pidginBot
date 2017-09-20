@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+export PYTHONIOENCODING=utf8
 konsole -e "finch" & &> /dev/null
 sleep .5
 noErr=0
