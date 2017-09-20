@@ -12,7 +12,6 @@ from json import dumps, loads
 from math import ceil
 from multiprocessing import Process, Queue, Lock
 from random import randint
-from sys import exit
 from emoji import demojize, emojize  # This dependency is 👍
 from emoji.unicode_codes import UNICODE_EMOJI as emojis
 from gi.repository import GObject, GLib
@@ -25,6 +24,11 @@ from time import strptime, sleep
 from six import string_types
 from youtube_dl import YoutubeDL as ydl
 
+import sys
+
+exit = sys.exit
+reload(sys)
+sys.setdefaultencoding("utf-8")
 
 # Utility Functions:
 # -----------------------------------------------
@@ -231,6 +235,11 @@ def replaceAliasVars(argSet, message):
             pass
     return newMsg
 
+def restartFinch():
+    print(u"Restarting Finch...")
+    executeCommand(u"killall -q finch")
+    executeCommand(u"konsole -e \"finch\" & > /dev/null > /dev/null")
+    sleep(.25)
 
 def getPun(argSet, punFilter):
     """
@@ -796,6 +805,10 @@ def exitProcess(code):
     global exitCode
     exitCode = code
 
+def restartBot():
+    restartFinch()
+    exitProcess(0)
+
 
 def diceRoll(argSet, diceStr="", *_):
     """
@@ -911,7 +924,7 @@ commands = {  # A dict containing the functions to run when a given command is e
     u"atloc": AtLoc,
     u"leftloc": leftLoc,
     u"diceroll": diceRoll,
-    u"restart": lambda *_: exitProcess(0),
+    u"restart": lambda *_: restartBot(),
     u"commands": lambda argSet, *_: simpleReply(argSet, getCommands(argSet)),
     u"to": to,
     u"schedule": scheduleEvent,
@@ -1063,6 +1076,7 @@ def messageListener(account, sender, message, conversation, flags, notOverflow=F
     :param notOverflow: Overrides overflow protection.
     :type notOverflow: bool
     """
+    message = message.decode("utf-8").encode("utf-8")
     global lastMessageTime
     argSet = (account, sender, message, conversation, flags)
     if purple.PurpleAccountGetUsername(account) == sender:
@@ -1242,10 +1256,6 @@ def confirmationListener():
             onMessageConfirmation(tuple(loads(message)))
         except ValueError:
             pass  # Invalid JSON can happen when data is left over in the pipe.
-
-def restartFinch():
-    print(u"Restarting Finch...")
-    executeCommand(u"killall finch")
 
 bus = SessionBus()  # Initialize the DBus interface
 purple = bus.get(u"im.pidgin.purple.PurpleService", u"/im/pidgin/purple/PurpleObject")  # Connect to libpurple clients.

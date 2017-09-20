@@ -7,5 +7,5 @@ do
 	echo "(Re)starting bot..."
 	python pidginCrossover.py
 	noErr=$?
-	killall finch
+	killall -q finch
 done
