@@ -214,6 +214,7 @@ nicks = nicks or {}
 dtFormatStr = u"%a, %d %b %Y %H:%M:%S UTC"
 dateFormatStr = u"%a, %b %m %Y at %I:%M%p"
 pipePath = u"pidginBotPipe"
+terminalName = u"konsole" # This will need to be changed if you don't use KDE!
 confirmMessage = False
 confirmationListenerProcess = None
 running = True
@@ -240,12 +241,11 @@ def replaceAliasVars(argSet, message):
     return newMsg
 
 def restartFinch():
-    # TODO: Make this function more modular for other DEs
     print(u"Restarting Finch...")
     executeCommand(u"killall -q finch")
 
     # This is not the most compatible way of doing this, but switching it to another terminal would be easy.
-    executeCommand(u"konsole -e \"finch\" & > /dev/null > /dev/null")
+    executeCommand(u"{} -e \"finch\" & > /dev/null > /dev/null".format(terminalName))
     # TODO: See if this sleep delay can be lowered?
     sleep(.25)
 
