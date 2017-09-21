@@ -243,10 +243,7 @@ def replaceAliasVars(argSet, message):
 def restartFinch():
     print(u"Restarting Finch...")
     executeCommand(u"killall -q finch")
-
-    # This is not the most compatible way of doing this, but switching it to another terminal would be easy.
     executeCommand(u"{} -e \"finch\" & > /dev/null > /dev/null".format(terminalName))
-    # TODO: See if this sleep delay can be lowered?
     sleep(.25)
 
 def getPun(argSet, punFilter):
@@ -554,8 +551,7 @@ def loc(argSet, *_):
     location = None
     if findSpace is not None:
         findSpace2 = argSet[2].find(u" ", findSpace + 1)
-        location = argSet[2][findSpace + 1:findSpace2] if len(argSet[2]) > len(
-            commandDelimiter) + 4 and argSet[2].count(u" ") > 1
+        location = argSet[2][findSpace + 1:findSpace2] if len(argSet[2]) > len(commandDelimiter) + 4 and argSet[2].count(u" ") > 1 else None
         time = argSet[2][findSpace2 + 1:]
     Loc(argSet, time=time or argSet[2], location=location)
 
