@@ -16,7 +16,7 @@ from emoji import demojize, emojize  # This dependency is 👍
 from emoji.unicode_codes import UNICODE_EMOJI as emojis
 from gi.repository import GObject, GLib
 from humanize import naturaldelta, naturaltime
-from os import mkfifo, _exit
+from os import mkfifo
 from os import system as executeCommand
 from pydbus import SessionBus
 from parsedatetime import Calendar as datetimeParser
@@ -30,11 +30,10 @@ def dump(obj):
     """
     Dumps an object's properties into the console.
     :param obj: The object to dump
-    :return: Nothing, it's printed to the console.
     """
     for attr in dir(obj):
         if hasattr(obj, attr):
-            print("obj.%s = %s" % (attr, getattr(obj, attr)))
+            print(u"obj.{} = {}".format(attr, getattr(obj, attr)))
 
 
 def readFile(path):
@@ -147,7 +146,7 @@ def getFullConvName(partialName):
     """
     conversations = [purple.PurpleConversationGetTitle(conv) for conv in getChats()]
     # Check the beginning first, if none start with the partial name, find it in there somewhere.
-    return next((i for i in conversations if i[0:len(partialName)] == partialName), None) or next(
+    return next((i for i in conversations if i[:len(partialName)] == partialName), None) or next(
         (i for i in conversations if partialName in i), None)
 
 
@@ -171,10 +170,18 @@ def simpleReply(argSet, message):
 getConvByName = lambda name: next(
     (i for i in getChats() if purple.PurpleConversationGetTitle(i) == name), None)
 
-logFile = open(u"Pidgin_Crossover_Messages.log", mode="a")
-# Writes a string to the log file.
-logStr = lambda string: logFile.write(str(u"[{}] {}".format(now().isoformat(), demojize(string))))
-log = lambda string: [fct(string + u"") for fct in (print, logStr)]  # Prints and writes to the log file.
+logFile = open(u"Pidgin_Crossover_Messages.log", mode=u"a")
+
+def log(msg):
+    """
+    Writes msg into the console and appends it to the log file.
+    :param msg: The string to write.
+    :type msg: string_types
+    """
+    print(msg)
+    # PyCharm thinks a TextIOWrapper is not an instance of Optional[IO]. PyCharm is incorrect.
+    # noinspection PyTypeChecker
+    print(msg, file=logFile)
 
 # Returns what it says on the tin.
 isListButNotString = lambda obj: isinstance(obj, (list, tuple, set)) and not isinstance(obj, string_types)
@@ -182,11 +189,12 @@ isListButNotString = lambda obj: isinstance(obj, (list, tuple, set)) and not isi
 
 # Read files for persistent values.
 messageLinks, puns, aliases, atLoc, scheduledEvents, nicks = readFiles(u"messageLinks.json", u"Puns.json",
-    u"Aliases.json",
-    u"atLoc.json", u"scheduledEvents.json", u"nicks.json")
+    u"Aliases.json", u"atLoc.json", u"scheduledEvents.json", u"nicks.json")
 
 commandDelimiter = u"!"  # What character(s) the commands should start with.
 lastMessage = u""  # The last message, to prevent infinite looping.
+defaultLocMinutes = 45
+defaultLocTime = u"{} minutes".format(defaultLocMinutes) # What to use when someone goes somewhere without specifying a length of time.
 now = datetime.now
 lastMessageTime = now()
 startTime = now()
@@ -232,9 +240,13 @@ def replaceAliasVars(argSet, message):
     return newMsg
 
 def restartFinch():
+    # TODO: Make this function more modular for other DEs
     print(u"Restarting Finch...")
     executeCommand(u"killall -q finch")
+
+    # This is not the most compatible way of doing this, but switching it to another terminal would be easy.
     executeCommand(u"konsole -e \"finch\" & > /dev/null > /dev/null")
+    # TODO: See if this sleep delay can be lowered?
     sleep(.25)
 
 def getPun(argSet, punFilter):
@@ -275,13 +287,12 @@ def Help(argSet, page=u"", *_):
         simpleReply(argSet, helpText[cmd.lower()])
     elif not page or (page and page.isdigit()):  # If a page number was asked for
         page = int(page) if page and page.isdigit() else 1
-        helpStr = u""
-        helpStr += u"Help page {}/{}".format(int(min(page, int(ceil(1.0 * len(iteratableCommands) / commandsPerPage)))),
-            int(ceil(1.0 * len(iteratableCommands) / commandsPerPage)))
+        helpEntries = [u"Help page {}/{}".format(int(min(page, int(ceil(1.0 * len(iteratableCommands) / commandsPerPage)))),
+            int(ceil(1.0 * len(iteratableCommands) / commandsPerPage)))]
         for i in range(max(0, (page - 1) * commandsPerPage), min(page * commandsPerPage, len(iteratableCommands))):
-            helpStr += u"\n" + iteratableCommands[i] + u": " + (
-                helpText[iteratableCommands[i]] if iteratableCommands[i] in helpText else u"")
-        simpleReply(argSet, helpStr)
+            helpEntries.append(u"\n" + iteratableCommands[i] + u": " + (
+                helpText[iteratableCommands[i]] if iteratableCommands[i] in helpText else u""))
+        simpleReply(argSet, u"".join(helpEntries))
     else:
         simpleReply(argSet, u"No command \"{}\" found.".format(page))
 
@@ -449,6 +460,12 @@ def getFullUsername(argSet, partialName, nick=True):
     :rtype: string_types
     """
     chat = getChatName(argSet[3])
+
+    # Special case the bot's name
+    botName = purple.PurpleAccountGetAlias(argSet[0])
+    if partialName.lower() == botName[:len(partialName)].lower() or partialName.lower() in botName.lower():
+        return botName if (u""+botName) not in nicks[chat] or not nick else nicks[chat][u""+botName]
+
     buddies = [purple.PurpleConvChatCbGetName(user) for user in
         purple.PurpleConvChatGetUsers(purple.PurpleConvChat(argSet[3]))][:-1]
     names = [getNameFromArgs(argSet[0], buddy) for buddy in buddies]
@@ -476,11 +493,16 @@ def getUserFromName(argSet, partialName, nick=True):
     :rtype: string_types
     """
     chat = getChatName(argSet[3])
+
+    # Special case the bot's name
+    botName = purple.PurpleAccountGetAlias(argSet[0])
+    if partialName.lower() == botName[:len(partialName)].lower() or partialName.lower() in botName.lower():
+        return botName if (u""+botName) not in nicks[chat] or not nick else nicks[chat][u""+botName]
+
     buddies = [purple.PurpleConvChatCbGetName(user) for user in
         purple.PurpleConvChatGetUsers(purple.PurpleConvChat(argSet[3]))][:-1]
     names = [getNameFromArgs(argSet[0], buddy) for buddy in buddies]
-    names.append(purple.PurpleAccountGetAlias(argSet[0]))
-    rng = range(len(names))
+    rng = range(len(buddies))
     # Check the beginning first, otherwise, check if the partialname is somewhere in the name.
     name = (next((buddies[i] for i in rng if names[i][:len(partialName)].lower() == partialName.lower()), None) or
             next((buddies[i] for i in rng if partialName.lower() in names[i].lower()), None))
@@ -504,10 +526,17 @@ def Mimic(argSet, user=None, firstWordOfCmd=None, *_):
         simpleReply(argSet, u"You need to specify the user to mimic and the command to mimic!")
         return
     fullUser = getUserFromName(argSet, user, False)
+
     if fullUser is None:
         simpleReply(argSet, u"No user by the name \"{}\" found.".format(user))
+        return
+
+    if fullUser == purple.PurpleAccountGetAlias(argSet[0]): # If mimic is attempted on the bot
+        simpleReply(argSet, u"You can't use mimic on me! I'm invincible!")
+        return
     # The command, after the user argument.
     cmd = argSet[2][6 + len(commandDelimiter):][argSet[2][6 + len(commandDelimiter):].find(u" ") + 1:].lower()
+
     if not runCommand((argSet[0], fullUser, cmd, argSet[3], argSet[4]), cmd.split(u" ")[0][len(commandDelimiter):],
             *cmd.split(u" ")[len(commandDelimiter):]):
         simpleReply(argSet, u"That's not a command!")
@@ -522,17 +551,13 @@ def loc(argSet, *_):
     """
     findSpace = argSet[2].find(u" ")
     time = False
+    location = None
     if findSpace is not None:
         findSpace2 = argSet[2].find(u" ", findSpace + 1)
         location = argSet[2][findSpace + 1:findSpace2] if len(argSet[2]) > len(
-            commandDelimiter) + 4 and argSet[2].count(u" ") > 1 else u"GDS"
+            commandDelimiter) + 4 and argSet[2].count(u" ") > 1
         time = argSet[2][findSpace2 + 1:]
-    else:
-        location = u"GDS"
     Loc(argSet, time=time or argSet[2], location=location)
-
-
-defaultLocTime = u"45 minutes"
 
 
 def Loc(argSet, location=u"GDS", time=defaultLocTime):
@@ -553,22 +578,12 @@ def Loc(argSet, location=u"GDS", time=defaultLocTime):
     name = getNameFromArgs(argSet[0], argSet[1], argSet[3])
     atLoc[chat][name] = [now(), location, time]
     if u"in " in time or u"at " in time:
-        messageListener(argSet[0],
-            argSet[1],
-            u"{0}schedule {1} {0}loc {2} {3}".format(commandDelimiter, time, location, defaultLocTime),
-            argSet[3],
-            argSet[4],
-            True
-        )
+        newArgset=list(argSet)
+        newArgset[2] = u"{0}schedule {1} {0}loc {2} {3}".format(commandDelimiter, time, location, defaultLocTime)
+        messageListener(*newArgset, notOverflow=True)
         return
 
-    simpleReply(argSet,
-        u"{} is going to {} for {}.".format(
-            getNameFromArgs(*argSet[:2]),
-            location,
-            time
-        )
-    )
+    simpleReply(argSet,u"{} is going to {} for {}.".format(getNameFromArgs(*argSet[:2]), location, time))
     updateFile(u"atLoc.json", atLoc)
 
 
@@ -618,9 +633,9 @@ def AtLoc(argSet, *_):
 
     def toDelta(string):
         """
-        Converts a serialized string_types string back into a datetime object.
+        Converts a serialized string back into a datetime object.
 
-        :param string: The serialized string_types string.
+        :param string: The serialized string.
         :type string: string_types
         :return: The serialized string, as a datetime object.
         :rtype: timedelta
@@ -629,11 +644,11 @@ def AtLoc(argSet, *_):
             if string > timedelta():
                 return string
             else:
-                return timedelta(minutes=30)
+                return timedelta(minutes=defaultLocMinutes)
         try:
             return strptime(string, u"%H:%M:%S")
         except:
-            return timedelta(minutes=30)
+            return timedelta(minutes=defaultLocMinutes)
 
     location = argSet[2][len(commandDelimiter) + 6:] if u" " in argSet[2] else u"anywhere"
     chat = getChatName(argSet[3])
@@ -665,7 +680,7 @@ def scheduleEvent(argSet, *_):
         timeStr = msg[:msg.find(commandDelimiter) - 1]
         cmdStr = msg[msg.find(commandDelimiter):]
     else:
-        simpleReply(argSet, u"You need a command to run, with the command delimiter \"" + commandDelimiter + u"\"")
+        simpleReply(argSet, u"You need a command to run, with the command delimiter \"{}\"".format(commandDelimiter))
         return
     newArgset = list(argSet)
     newArgset[2] = cmdStr
@@ -715,9 +730,8 @@ def removeEvent(argSet, index, *_):
     :param index: The index of the event to be removed.
     :type index: int
     """
-    userEvents = (e for e in scheduledEvents if getNameFromArgs(argSet[0], *e[1][1:2]) == getNameFromArgs(*argSet[0:2]))
     index = int(index)
-    if scheduledEvents[index] in userEvents:
+    if getNameFromArgs(argSet[0], *scheduledEvents[index][1][1:2]) == getNameFromArgs(*argSet[:2]):
         scheduledEvents.pop(index)
         simpleReply(argSet, u"Event at index {} removed.".format(index))
     else:
@@ -768,8 +782,7 @@ def getNicks(argSet):
     if chat not in nicks:
         simpleReply(argSet, u"No nicks have been set in this chat yet!")
         return
-    prettyFormat = lambda myDict: u"\n".join(str(a) + u": " + str(b) for a, b in myDict.items())
-    simpleReply(argSet, u"" + prettyFormat(nicks[chat] or {}))
+    simpleReply(argSet, u"\n".join(u"{}: {}".format(str(k), str(v)) for k, v in nicks[chat].items()))
 
 
 dice = [u"0⃣", u"1⃣", u"2⃣", u"3⃣", u"4⃣", u"5⃣", u"6⃣", u"7⃣", u"8⃣", u"9⃣️⃣️"]  # 1-9 in emoji form
@@ -796,10 +809,9 @@ def exitProcess(code):
     """
     if confirmationListenerProcess is not None:
         confirmationListenerProcess.terminate()
-    global running
+    global running, exitCode
     running = False # Go away, GLib.timeout.
     mainloop.quit() # Go away, GObject.
-    global exitCode
     exitCode = code
 
 def restartBot():
@@ -856,9 +868,9 @@ def findNthInstance(n, haystack, needle):
     Finds the nth instance of needle in haystack.
     :type n: int
     :param n: How many instances to look for.
-    :type haystack: unicode
+    :type haystack: string_types
     :param haystack: What to search through
-    :type needle: unicode
+    :type needle: string_types
     :param needle: What to look for.
     :return: n, or 0 if none is found.
     """
@@ -875,8 +887,8 @@ def getYTURL(queryMsg):
     Gets the URL of the first YouTube video when searching for queryMsg.
     :type queryMsg: string_types
     :param queryMsg: The search term to use to find the video.
-    :rtype: unicode
-    :return: The URL of the YouTube video, as a unicode string.
+    :rtype: string_types
+    :return: The URL of the YouTube video, as a string.
     """
     dl = ydl()
     with dl:
@@ -1097,7 +1109,7 @@ def messageListener(account, sender, message, conversation, flags, notOverflow=F
     except UnicodeError:
         pass
     # Run commands if the message starts with the command character.
-    if message[0:len(commandDelimiter)] == commandDelimiter:
+    if message[:len(commandDelimiter)] == commandDelimiter:
         command = message[len(commandDelimiter):message.find(u" ") if u" " in message else len(message)].lower()
         args = message.split(u" ")[1:]
         try:
@@ -1144,7 +1156,7 @@ def processEvents(threshold=timedelta(seconds=2)):
                     newArgset[0] = next((i for i in accounts if purple.PurpleAccountGetUsername(i) == newArgset[0]),
                         None)
                     if newArgset[0] is None:
-                        raise Exception("Account not found.")
+                        raise Exception(u"Account not found.")
                     messageListener(*newArgset)
                 except:
                     pass
@@ -1254,7 +1266,7 @@ def confirmationListener():
         try:
             onMessageConfirmation(tuple(loads(message)))
         except ValueError:
-            pass  # Invalid JSON can happen when data is left over in the pipe.
+            pass  # Invalid JSON can happen when data is left over in the pipe, but this can be safely ignored.
 
 bus = SessionBus()  # Initialize the DBus interface
 purple = bus.get(u"im.pidgin.purple.PurpleService", u"/im/pidgin/purple/PurpleObject")  # Connect to libpurple clients.
@@ -1269,12 +1281,14 @@ lock = Lock()
 if confirmMessage:
     confirmationListenerProcess = Process(target=confirmationListener)
     confirmationListenerProcess.start()
+
+# TODO: These may be removable, but that needs to be tested
 GObject.threads_init()
 GLib.threads_init()
+
 GLib.timeout_add_seconds(1, periodicLoop)  # Run periodicLoop once per second.
 mainloop = GObject.MainLoop()
 mainloop.run()  # Actually run the program.
 
 
-exit(exitCode)  # Okay, close it.
-_exit(exitCode)  # No, really, close it.
+exit(exitCode)  # Make sure the process exists with the correct error code.
