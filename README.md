@@ -1,8 +1,7 @@
 # pidginBot
 A bot built on top of pidgin/finch (Maybe other libpurple clients?) using the DBus interface. It can:
-
--Send messages to and from chats across different (libpurple supported) chat protocols.
--Perform commands.
+- Send messages to and from chats across different (libpurple supported) chat protocols.
+- Perform commands.
 
 It can run on any linux-based system that supports libpurple. The bot assumes you're using konsole. If you aren't, switch the terminalName variable to match the terminal you use.
 
