@@ -455,7 +455,7 @@ def addAlias(argSet, *_):
     if cmd not in commands:
         simpleReply(argSet, u"{}{} is not a command!".format(commandDelimiter, cmd))
         return
-    aliases[chat][str(command)] = (argsMsg, args)
+    aliases[chat][str(command)] = argsMsg
     simpleReply(argSet, u"\"{}\" bound to \"{}\".".format(commandDelimiter + command, commandDelimiter + argsMsg))
     updateFile(u"Aliases.json", aliases)
 
@@ -1070,10 +1070,10 @@ def runCommand(argSet, command, *args):
             command = message[len(commandDelimiter):message.find(u" ") if u" " in message else len(message)].lower()
             # Swap the command for the right one
             message = message[:msgLow.find(command)] + command + message[msgLow.find(command) + len(command):]
-            newMsg = replaceAliasVars(argSet, message.replace(command, cmd[0], 1))
+            newMsg = replaceAliasVars(argSet, message.replace(command, cmd, 1))
             # Get the extra arguments to the function and append them at the end.
             extraArgs = newMsg.split(u" ")[1:]
-            commands[cmd[1][0]]((argSet[0], argSet[1], newMsg, argSet[3], argSet[4]), *extraArgs)  # Run the alias's command
+            commands[cmd.split(u" ", 1)[0]]((argSet[0], argSet[1], newMsg, argSet[3], argSet[4]), *extraArgs)  # Run the alias's command
             return True
     return False
 
