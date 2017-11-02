@@ -109,6 +109,7 @@ def getNameFromArgs(act, name, conv=None):
     @param conv The conversation from the argSet.
     @return The user's nickname, or their actual name if no nick was found.
     """
+
     buddy = purple.PurpleFindBuddy(act, name)
     realName = purple.PurpleBuddyGetAlias(buddy) or purple.PurpleBuddyGetName(buddy)
     chat = None  # This is here so PyCharm doesn't complain about chat not existing in the return statement.
@@ -150,11 +151,12 @@ def _formatCommandAndAliases(lst, formatStr):
         if lastValue is None:
             lastValue = val
             currentList.append(val)
-            continue
-        if lastValue[:1] != val[:1]:
+        elif lastValue[:1] != val[:1]:
             lastValue = val
             alphabeticalLists.append(currentList)
             currentList = []
+        else:
+            currentList.append(val)
     return formatStr.format(u"\n".join((u", ".join(alphabeticalList) for alphabeticalList in alphabeticalLists)))
 
 
@@ -1280,8 +1282,8 @@ def queueMessage(account, sender, message, conversation, flags):
     @type flags tuple
     """
     argSet = (account, sender, message, conversation, flags)
-    if purple.PurpleAccountGetUsername(account) == sender or purple.PurpleAccountGetUsername(
-            account) == getNameFromArgs(account, sender):
+    if purple.PurpleAccountGetAlias(account) == sender or purple.PurpleAccountGetAlias(
+            account) == getNameFromArgs(account, sender) or purple.PurpleAccountGetUsername(account) == sender:
         return
     messageQueue.append(argSet)
 
