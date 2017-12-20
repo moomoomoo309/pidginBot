@@ -9,7 +9,6 @@ Dependencies:
 
  1. Python 2.7/3.4+ (May run on older versions, not tested)
  1. PyGObject (pip install pygobject)
- 1. emoji (pip install emoji)
  1. PyDBus (pip install pydbus)
  1. humanize (pip install humanize)
  1. parsedatetime (pip install parsedatetime)
@@ -17,7 +16,7 @@ Dependencies:
  1. Finch (sudo apt install finch)
 
 On debian, the command to install all of the dependencies is:
-`sudo apt install finch && sudo pip install pygobject emoji pydbus humanize parsedatetime youtube-dl --upgrade`
+`sudo apt install finch && sudo pip install pygobject pydbus humanize parsedatetime youtube-dl --upgrade`
 
 How to use:
 
