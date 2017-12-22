@@ -405,9 +405,10 @@ def Link(argSet, chat, *chats):
             simpleReply(argSet, u"No chat by name {} found.".format(chats[i]))
             return
     if fullChatName in messageLinks:
+        messageLinks[fullChatName] = set(messageLinks[fullChatName])
         messageLinks[fullChatName].intersection(fullChatNames)
     else:
-        messageLinks[fullChatName] = fullChatNames
+        messageLinks[fullChatName] = [fullChatNames,]
     if len(messageLinks[fullChatName]) == 1:
         messageLinks[fullChatName] = messageLinks[fullChatName][0]
     updateFile(u"messageLinks.json", messageLinks)
@@ -496,10 +497,14 @@ def addAlias(argSet, *_):
     command = command[len(commandDelimiter):] if command[:len(commandDelimiter)] == commandDelimiter else command
     argsMsg = message[message.find(u" ") + 1 + len(commandDelimiter):]
     if u" " not in message:  # If the user is asking for the command run by a specific alias.
-        if str(command) not in aliases[chat]:  # If the alias asked for does not exist.
+        for _chat in messageLinks[chat]:
+            if str(command) in aliases[_chat]:  # If the alias asked for does not exist.
+                chat = _chat
+                break
+        else:
             simpleReply(argSet, u"No alias \"{}\" found.".format(str(command)))
             return
-        simpleReply(argSet, u'"' + commandDelimiter + aliases[chat][str(command)][0] + u'"')
+        simpleReply(argSet, u'"' + commandDelimiter + aliases[chat][str(command)] + u'"')
         return
     if str(command) in commands:
         simpleReply(argSet, u"That name is already used by a command!")
@@ -557,8 +562,7 @@ def getFullUsername(argSet, partialName, nick=True):
     # Special case the bot's name
     botName = purple.PurpleAccountGetAlias(argSet[0])
     if partialName.lower() == botName[:len(partialName)].lower() or partialName.lower() in botName.lower():
-        return botName if (u"" + botName) not in nicks[chat] or not nick else nicks[chat][u"" + botName]
-
+        return botName if chat not in nicks or (u"" + botName) not in nicks[chat] or not nick else nicks[chat][u"" + botName]
     buddies = [purple.PurpleConvChatCbGetName(user) for user in
         purple.PurpleConvChatGetUsers(purple.PurpleConvChat(argSet[3]))][:-1]
     names = [getNameFromArgs(argSet[0], buddy) for buddy in buddies]
