@@ -594,7 +594,7 @@ def getUserFromName(argSet, partialName, nick=True):
     # Special case the bot's name
     botName = purple.PurpleAccountGetAlias(argSet[0])
     if partialName.lower() == botName[:len(partialName)].lower() or partialName.lower() in botName.lower():
-        return botName if (u"" + botName) not in nicks[chat] or not nick else nicks[chat][u"" + botName]
+        return botName if chat not in nicks or (u"" + botName) not in nicks[chat] or not nick else nicks[chat][u"" + botName]
 
     buddies = [purple.PurpleConvChatCbGetName(user) for user in
         purple.PurpleConvChatGetUsers(purple.PurpleConvChat(argSet[3]))][:-1]
