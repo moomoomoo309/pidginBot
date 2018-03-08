@@ -3,14 +3,15 @@ export PYTHONIOENCODING=utf8
 noErr=0
 while [ ${noErr} -eq 0 ]
 do
-	if [ "$(pidof finch)" == "" ]
+	if [ "$(pidof pidgin)" == "" ]
 	then
-	    echo "Starting finch..."
-		konsole -e "finch" &
-	fi
-    sleep 1
+	    echo "Starting pidgin..."
+	    pidgin -c $PWD/.purple &
+        echo "Started pidgin."
+    fi
+	sleep 1
 	echo "Starting bot..."
-	python pidginCrossover.py
+	python3 pidginCrossover.py
 	noErr=$?
-	killall -q finch
+	killall -q pidgin
 done

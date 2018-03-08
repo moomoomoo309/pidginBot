@@ -12,9 +12,11 @@ import re
 from argparse import ArgumentError
 from io import open
 from datetime import datetime, timedelta
+from itertools import chain
 from json import dumps, loads
 from math import ceil
 from random import randint
+
 from gi.repository import GObject, GLib
 from humanize import naturaldelta, naturaltime
 from os import system as executeCommand
@@ -85,20 +87,9 @@ def updateFile(path, value):
     @type value string_types
     """
 
-    def serializeDate(dateTimeOrString):
-        """
-        Ensures dates are converted into a string.
-        @param dateTimeOrString The datetime or string to serialize.
-        @type dateTimeOrString datetime|string_types
-        @return The converted string back into a datetime, or None.
-        @rtype None|datetime
-        """
-        if isinstance(dateTimeOrString, datetime):
-            return dateTimeOrString.strftime(dtFormatStr)
-        return None
-
+    serializeDate = lambda dtOrStr: dtOrStr.strftime(dtFormatStr) if isinstance(dtOrStr, datetime) else None
     with open(path, mode=u"w", encoding=u"utf-8") as openFile:  # To update a file
-        openFile.write(dumps(value, openFile, indent=4, default=serializeDate, ensure_ascii=False))
+        openFile.write(dumps(value, indent=4, default=serializeDate, ensure_ascii=False))
         # The default function allows it to dump datetime objects.
 
 
@@ -115,7 +106,7 @@ def getNameFromArgs(act, name, conv=None):
     @param conv The conversation from the argSet.
     @return The user's nickname, or their actual name if no nick was found.
     """
-
+    act = purple.PurpleConversationGetAccount(conv) if conv is not None else act
     buddy = purple.PurpleFindBuddy(act, name)
     realName = purple.PurpleBuddyGetAlias(buddy) or purple.PurpleBuddyGetName(buddy)
     chat = None  # This is here so PyCharm doesn't complain about chat not existing in the return statement.
@@ -179,8 +170,9 @@ def getAliases(argSet):
     if convTitle in messageLinks:
         if isListButNotString(messageLinks[convTitle]):
             for conv in messageLinks[convTitle]:
-                availableAliases.update(aliases[conv])
-        else:
+                if conv in aliases:
+                    availableAliases.update(aliases[conv])
+        elif messageLinks[convTitle] in aliases:
             availableAliases.update(aliases[messageLinks[convTitle]])
     availableAliases.update(aliases[getChatName(argSet[3])])
     aliasList = list(sorted(availableAliases.keys()))
@@ -297,7 +289,8 @@ exitCode = 0
 restartingBot = False
 messageQueue = []
 overflowThreshold = 3
-libpurpleClient = u"finch"
+runInTerminal = False
+libpurpleClient = u"pidgin -c $PWD/.purple"
 
 
 def replaceAliasVars(argSet, message):
@@ -331,7 +324,10 @@ def restartFinch(*_):
     print(u"Restarting libpurple client...")
     restartingBot = True
     executeCommand(u"killall -q {}".format(libpurpleClient))
-    executeCommand(u"x-terminal-emulator -e \"{}\" &".format(libpurpleClient))
+    if runInTerminal:
+        executeCommand(u"x-terminal-emulator -e \"{}\" &".format(libpurpleClient))
+    else:
+        executeCommand(libpurpleClient + u" &")
     sleep(1)
     restartingBot = False
 
@@ -408,7 +404,7 @@ def Link(argSet, chat, *chats):
         messageLinks[fullChatName] = set(messageLinks[fullChatName])
         messageLinks[fullChatName].intersection(fullChatNames)
     else:
-        messageLinks[fullChatName] = [fullChatNames,]
+        messageLinks[fullChatName] = [fullChatNames, ]
     if len(messageLinks[fullChatName]) == 1:
         messageLinks[fullChatName] = messageLinks[fullChatName][0]
     updateFile(u"messageLinks.json", messageLinks)
@@ -557,23 +553,7 @@ def getFullUsername(argSet, partialName, nick=True):
     @return A user's alias.
     @rtype string_types
     """
-    chat = getChatName(argSet[3])
-
-    # Special case the bot's name
-    botName = purple.PurpleAccountGetAlias(argSet[0])
-    if partialName.lower() == botName[:len(partialName)].lower() or partialName.lower() in botName.lower():
-        return botName if chat not in nicks or (u"" + botName) not in nicks[chat] or not nick else nicks[chat][u"" + botName]
-    buddies = [purple.PurpleConvChatCbGetName(user) for user in
-        purple.PurpleConvChatGetUsers(purple.PurpleConvChat(argSet[3]))][:-1]
-    names = [getNameFromArgs(argSet[0], buddy) for buddy in buddies]
-    names.append(purple.PurpleAccountGetAlias(argSet[0]))
-    rng = range(len(names))
-    # Check the beginning first, otherwise, check if the partialname is somewhere in the name.
-    name = (next((names[i] for i in rng if names[i][:len(partialName)].lower() == partialName.lower()), None) or
-            next((names[i] for i in rng if partialName.lower() in names[i].lower()), None))
-    if nick and name is not None and chat in nicks and (u"" + name) in nicks[chat]:
-        return nicks[chat][u"" + name]
-    return name
+    return getUserFromName(argSet, partialName, nick)
 
 
 def getUserFromName(argSet, partialName, nick=True):
@@ -594,15 +574,30 @@ def getUserFromName(argSet, partialName, nick=True):
     # Special case the bot's name
     botName = purple.PurpleAccountGetAlias(argSet[0])
     if partialName.lower() == botName[:len(partialName)].lower() or partialName.lower() in botName.lower():
-        return botName if chat not in nicks or (u"" + botName) not in nicks[chat] or not nick else nicks[chat][u"" + botName]
+        return botName if chat not in nicks or (u"" + botName) not in nicks[chat] or not nick else nicks[chat][
+            u"" + botName]
 
-    buddies = [purple.PurpleConvChatCbGetName(user) for user in
-        purple.PurpleConvChatGetUsers(purple.PurpleConvChat(argSet[3]))][:-1]
-    names = [getNameFromArgs(argSet[0], buddy) for buddy in buddies]
-    rng = range(len(buddies))
+    chats = [argSet[3]]
+    if messageLinks[chat]:
+        chats += [_chat for _chat in getChats() if getChatName(_chat) in messageLinks[chat]]
+    users = dict()
+    _users = list(chain([purple.PurpleConvChatGetUsers(purple.PurpleConvChat(int(chat)))] for chat in chats))
+    for i in range(len(_users)):
+        users[chats[i]] = _users[i][0]
+    buddies = dict()
+    for _chat, _users in users.items():
+        buddies[_chat] = []
+        for i in range(len(_users)):
+            buddies[_chat].append(purple.PurpleConvChatCbGetName(_users[i]))
+    names = []
+    for _chat, _buddies in buddies.items():
+        for buddy in _buddies:
+            names.append(getNameFromArgs(argSet[0], buddy, _chat))
+    del names[len(names) - 1]
+    rng = range(len(names))
     # Check the beginning first, otherwise, check if the partialname is somewhere in the name.
-    name = (next((buddies[i] for i in rng if names[i][:len(partialName)].lower() == partialName.lower()), None) or
-            next((buddies[i] for i in rng if partialName.lower() in names[i].lower()), None))
+    name = (next((names[i] for i in rng if names[i][:len(partialName)].lower() == partialName.lower()), None) or
+            next((names[i] for i in rng if partialName.lower() in names[i].lower()), None))
     if nick and name is not None and chat in nicks and (u"" + name) in nicks[chat]:
         return nicks[chat][u"" + name]
     return name
@@ -627,10 +622,10 @@ def Mimic(argSet, user=None, firstWordOfCmd=None, *_):
     if fullUser is None:
         simpleReply(argSet, u"No user by the name \"{}\" found.".format(user))
         return
-
-    if fullUser == purple.PurpleAccountGetAlias(argSet[0]):  # If mimic is attempted on the bot
+    elif fullUser == purple.PurpleAccountGetAlias(argSet[0]):  # If mimic is attempted on the bot
         simpleReply(argSet, u"You can't use mimic on me! I'm invincible!")
         return
+
     # The command, after the user argument.
     cmd = argSet[2][6 + len(commandDelimiter):][argSet[2][6 + len(commandDelimiter):].find(u" ") + 1:].lower()
 
@@ -972,11 +967,11 @@ def findNthInstance(n, haystack, needle):
     @return n, or 0 if none is found.
     """
     if n < 1:
-        raise ArgumentError(u"You can't look for the nonnegative instance of something!")
+        raise ArgumentError(message=u"You can't look for the nonpositive instance of something!")
     numFound = 0
     for i in range(len(haystack) - len(needle) + 1):
-         numFound += haystack[i:i+len(needle)] == needle
-         if numFound == n:
+        numFound += haystack[i:i + len(needle)] == needle
+        if numFound == n:
             return i
     return 0
 
@@ -993,6 +988,33 @@ def getYTURL(queryMsg):
     with dl:
         info = dl.extract_info(u"ytsearch1:" + queryMsg, download=False)[u"entries"][0]
         return u"{1} - https://youtube.com/watch?v={0}".format(info[u"id"], info[u"title"])
+
+
+def listUsers(argSet, *_):
+    """
+    Lists all of the users in this chat and all connected ones.
+    @param argSet The set of values passed in to messageListener.
+    @type argSet tuple
+    """
+    chat = getChatName(argSet[3])
+    chats = [argSet[3]]
+    if messageLinks[chat]:
+        chats += [_chat for _chat in getChats() if getChatName(_chat) in messageLinks[chat]]
+    users = dict()
+    _users = list(chain([purple.PurpleConvChatGetUsers(purple.PurpleConvChat(int(chat)))] for chat in chats))
+    for i in range(len(_users)):
+        users[chats[i]] = _users[i][0]
+    buddies = dict()
+    for _chat, _users in users.items():
+        buddies[_chat] = []
+        for i in range(len(_users)):
+            buddies[_chat].append(purple.PurpleConvChatCbGetName(_users[i]))
+    names = []
+    for _chat, _buddies in buddies.items():
+        for buddy in _buddies:
+            names.append(getNameFromArgs(argSet[0], buddy, _chat))
+    del names[len(names)-1]
+    simpleReply(argSet, str(sorted(names)))
 
 
 commands = {  # A dict containing the functions to run when a given command is entered.
@@ -1043,9 +1065,7 @@ commands = {  # A dict containing the functions to run when a given command is e
     u"unalias": removeAlias,
     u"unlink": lambda argSet, *args: Unlink(argSet, *args),
     u"unschedule": removeEvent,
-    u"users": lambda argSet, *_: simpleReply(argSet, str(
-        [getNameFromArgs(argSet[0], purple.PurpleConvChatCbGetName(user)) for user in
-            purple.PurpleConvChatGetUsers(purple.PurpleConvChat(argSet[3]))][:-1])),
+    u"users": listUsers,
     u"yt": lambda argSet, *query: simpleReply(argSet, getYTURL(argSet[2])),
 }
 helpText = {  # The help text for each command.
@@ -1116,11 +1136,11 @@ def runCommand(argSet, command, *args):
         if convTitle in messageLinks:
             if isListButNotString(messageLinks[convTitle]):
                 for conv in messageLinks[convTitle]:
-                    if command in aliases[conv]:
+                    if conv in aliases and command in aliases[conv]:
                         cmd = aliases[conv][command]
                         break
             else:
-                if command in aliases[messageLinks[convTitle]]:
+                if messageLinks[convTitle] in aliases and command in aliases[messageLinks[convTitle]]:
                     cmd = aliases[messageLinks[convTitle]][command]
         if cmd is not None:
             message = argSet[2]
@@ -1195,7 +1215,7 @@ def messageListener(account, sender, message, conversation, flags):
     @param flags Any flags for this message, such as the type of message.
     @type flags tuple
     """
-    global lastMessageTime
+    global lastMessageTime, lastMessage
     try:
         message = u"" + message.decode(encoding=u"utf-8", errors=u"ignore")
     except:
@@ -1220,9 +1240,9 @@ def messageListener(account, sender, message, conversation, flags):
     except UnicodeError:
         pass
     # Run commands if the message starts with the command character.
+    global wasCommand
     wasCommand = False
     if message[:len(commandDelimiter)] == commandDelimiter:
-        global wasCommand
         wasCommand = True
         command = message[len(commandDelimiter):message.find(u" ") if u" " in message else len(message)].lower()
         args = message.split(u" ")[1:]
@@ -1238,7 +1258,6 @@ def messageListener(account, sender, message, conversation, flags):
             simpleReply(argSet, u"Command errored! Error message: \"{}\"".format(traceback.format_exc()))
 
     # Send messages to connected chats.
-    global lastMessage
     try:
         if message == lastMessage:  # Makes sure the messages don't loop infinitely.
             return
@@ -1331,10 +1350,6 @@ def periodicLoop():
         del messageQueue[:]  # Empties the queue
 
     return running
-
-
-
-
 
 
 bus = SessionBus()  # Initialize the DBus interface
