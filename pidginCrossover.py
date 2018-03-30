@@ -7,23 +7,23 @@ A bot controlling an instance of pidgin/finch in order to send/receive messages.
 # "sudo pip install pygobject humanize parsedatetime pydbus youtube-dl --upgrade" will do that for you.
 from __future__ import print_function  # This does not break Python 3 compatibility.
 
-import traceback
 import re
+import traceback
 from argparse import ArgumentError
-from io import open
 from datetime import datetime, timedelta
+from io import open
 from itertools import chain
 from json import dumps, loads
 from math import ceil
-from random import randint
-
-from gi.repository import GObject, GLib
-from humanize import naturaldelta, naturaltime
 from os import system as executeCommand
-from pydbus import SessionBus
+from random import randint
+from time import sleep, strptime
+
+from gi.repository import GLib, GObject
+from humanize import naturaldelta, naturaltime
 from parsedatetime import Calendar as datetimeParser
-from time import strptime, sleep
-from six import string_types, u
+from pydbus import SessionBus
+from six import string_types
 from youtube_dl import YoutubeDL as ydl
 
 
@@ -250,8 +250,6 @@ def log(msg):
     @type msg string_types
     """
     print(msg)
-    # PyCharm thinks a TextIOWrapper is not an instance of Optional[IO]. PyCharm is incorrect.
-    # noinspection PyTypeChecker
     print(msg, file=logFile)
 
 
@@ -262,7 +260,7 @@ isListButNotString = lambda obj: isinstance(obj, (list, tuple, set)) and not isi
 messageLinks, puns, aliases, atLoc, scheduledEvents, nicks = readFiles(u"messageLinks.json", u"Puns.json",
     u"Aliases.json", u"atLoc.json", u"scheduledEvents.json", u"nicks.json")
 
-commandDelimiter = u"!"  # What character(s) the commands should start with.
+commandDelimiter = u"!?"  # What character(s) the commands should start with.
 lastMessage = u""  # The last message, to prevent infinite looping.
 defaultLocMinutes = 45
 defaultLocTime = u"{} minutes".format(defaultLocMinutes)  # What to use when someone goes somewhere by default.
@@ -362,7 +360,7 @@ def Help(argSet, page=u"", *_):
     @param page The page number it should be on, as a string_types string.
     @type page string_types
     """
-    iteratableCommands = tuple(sorted(commands.keys()))  # A tuple containing all of the keys in iteratableCommands.
+    iterableCommands = tuple(sorted(commands.keys()))  # A tuple containing all of the keys in iterableCommands.
     commandsPerPage = 10  # How many commands to show per page.
     cmd = page[len(commandDelimiter):] if page.startswith(commandDelimiter) else page
     if cmd and cmd.lower() in helpText:  # If the help text for a given command was asked for
@@ -370,11 +368,11 @@ def Help(argSet, page=u"", *_):
     elif not page or (page and page.isdigit()):  # If a page number was asked for
         page = int(page) if page and page.isdigit() else 1
         helpEntries = [
-            u"Help page {}/{}".format(int(min(page, int(ceil(1.0 * len(iteratableCommands) / commandsPerPage)))),
-                int(ceil(1.0 * len(iteratableCommands) / commandsPerPage)))]
-        for i in range(max(0, (page - 1) * commandsPerPage), min(page * commandsPerPage, len(iteratableCommands))):
-            helpEntries.append(u"\n" + iteratableCommands[i] + u": " + (
-                helpText[iteratableCommands[i]] if iteratableCommands[i] in helpText else u""))
+            u"Help page {}/{}".format(int(min(page, int(ceil(1.0 * len(iterableCommands) / commandsPerPage)))),
+                int(ceil(1.0 * len(iterableCommands) / commandsPerPage)))]
+        for i in range(max(0, (page - 1) * commandsPerPage), min(page * commandsPerPage, len(iterableCommands))):
+            helpEntries.append(u"\n" + iterableCommands[i] + u": " + (
+                helpText[iterableCommands[i]] if iterableCommands[i] in helpText else u""))
         simpleReply(argSet, u"".join(helpEntries))
     else:
         simpleReply(argSet, u"No command \"{}\" found.".format(page))
@@ -486,7 +484,7 @@ def addAlias(argSet, *_):
     """
     chat = getChatName(argSet[3])
     aliases[chat] = aliases[chat] if chat in aliases else {}
-    message = argSet[2][7 + len(commandDelimiter):]
+    message = argSet[2][7:]
     if message == u"":
         return
     command = (message[:message.find(u" ")] if u" " in message else message).lower()
@@ -737,7 +735,7 @@ def AtLoc(argSet, *_):
             else:
                 return timedelta(minutes=defaultLocMinutes)
         try:
-            return strptime(string, u"%H:%M:%S")
+            return strptime(string, "%H:%M:%S")
         except:
             return timedelta(minutes=defaultLocMinutes)
 
@@ -1013,103 +1011,102 @@ def listUsers(argSet, *_):
     for _chat, _buddies in buddies.items():
         for buddy in _buddies:
             names.append(getNameFromArgs(argSet[0], buddy, _chat))
-    del names[len(names)-1]
+    del names[len(names) - 1]
     simpleReply(argSet, str(sorted(names)))
 
 
 commands = {  # A dict containing the functions to run when a given command is entered.
-    u"addpun": lambda argSet, *_: addPun(argSet, argSet[2][7 + len(commandDelimiter):]),
-    u"alias": addAlias,
-    u"aliases": lambda argSet, *_: simpleReply(argSet, getAliases(argSet)),
-    u"allevents": getAllEvents,
-    u"args": lambda argSet, *_: simpleReply(argSet, u"" + str(argSet)),
-    u"atloc": AtLoc,
-    u"botme": lambda argSet, *_: simpleReply(argSet,
+    u"addpun":     lambda argSet, *_: addPun(argSet, argSet[2][7 + len(commandDelimiter):]),
+    u"alias":      addAlias,
+    u"aliases":    lambda argSet, *_: simpleReply(argSet, getAliases(argSet)),
+    u"allevents":  getAllEvents,
+    u"args":       lambda argSet, *_: simpleReply(argSet, u"" + str(argSet)),
+    u"atloc":      AtLoc,
+    u"botme":      lambda argSet, *_: simpleReply(argSet,
         u"*{} {}.".format(purple.PurpleAccountGetAlias(argSet[0]), argSet[2][6 + len(commandDelimiter):])),
-    u"chats": lambda argSet, *_: simpleReply(argSet,
+    u"chats":      lambda argSet, *_: simpleReply(argSet,
         u"" + str([u"{} ({})".format(purple.PurpleConversationGetTitle(conv), conv) for conv in getChats()])[
         1:-1].replace(u"u'", u"'")),
-    u"commands": lambda argSet, *_: simpleReply(argSet, getCommands(argSet)),
-    u"diceroll": diceRoll,
-    u"echo": lambda argSet, *_: simpleReply(argSet,
+    u"commands":   lambda argSet, *_: simpleReply(argSet, getCommands(argSet)),
+    u"diceroll":   diceRoll,
+    u"echo":       lambda argSet, *_: simpleReply(argSet,
         argSet[2][argSet[2].lower().find(u"echo") + 4 + len(commandDelimiter):]),
-    u"events": getEvents,
-    u"exit": lambda *_: exitProcess(37),
-    u"gds": lambda argSet, *_: Loc(argSet, time=argSet[2][len(commandDelimiter) + 4:]),
-    u"help": Help,
+    u"events":     getEvents,
+    u"exit":       lambda *_: exitProcess(37),
+    u"gds":        lambda argSet, *_: Loc(argSet, time=argSet[2][len(commandDelimiter) + 4:]),
+    u"help":       Help,
     u"htmlescape": lambda argSet, *_: simpleReply(argSet, purple.PurpleMarkupStripHtml(argSet[2][11:])),
     u"lastreboot": lambda argSet, *_: simpleReply(argSet,
         u"{}, ({})".format(naturalTime(startTime), startTime.strftime("%a, %b %m %Y at %I:%M%p"))),
-    u"leftloc": leftLoc,
-    u"link": lambda argSet, *args: Link(argSet, *args),
-    u"links": lambda argSet, *_: simpleReply(argSet, u"" + str(messageLinks)),
-    u"loc": loc,
-    u"loconly": lambda argSet, *_: Loc(argSet, location=argSet[2][len(commandDelimiter) + 8:]),
-    u"me": lambda argSet, *_: simpleReply(argSet, replaceAliasVars(argSet,
+    u"leftloc":    leftLoc,
+    u"link":       lambda argSet, *args: Link(argSet, *args),
+    u"links":      lambda argSet, *_: simpleReply(argSet, u"" + str(messageLinks)),
+    u"loc":        loc,
+    u"loconly":    lambda argSet, *_: Loc(argSet, location=argSet[2][len(commandDelimiter) + 8:]),
+    u"me":         lambda argSet, *_: simpleReply(argSet, replaceAliasVars(argSet,
         u"*{} {}.".format(getNameFromArgs(argSet[0], argSet[1], argSet[3]), argSet[2][3 + len(commandDelimiter):]))),
-    u"mimic": Mimic,
-    u"msg": lambda argSet, msg="", *_: sendMessage(argSet[-2], getConvFromPartialName(msg), u"",
+    u"mimic":      Mimic,
+    u"msg":        lambda argSet, msg="", *_: sendMessage(argSet[-2], getConvFromPartialName(msg), u"",
         getNameFromArgs(*argSet[:2]) + ": " + argSet[2][
         argSet[2][4 + len(commandDelimiter):].find(u" ") + 5 + len(commandDelimiter):]),
-    u"nicks": getNicks,
-    u"ping": lambda argSet, *_: simpleReply(argSet, u"Pong!"),
-    u"pun": lambda argSet, pun=u"", *_: simpleReply(argSet, getPun(argSet, pun)),
+    u"nicks":      getNicks,
+    u"ping":       lambda argSet, *_: simpleReply(argSet, u"Pong!"),
+    u"pun":        lambda argSet, pun=u"", *_: simpleReply(argSet, getPun(argSet, pun)),
     u"removenick": removeNick,
-    u"removepun": lambda argSet, pun, *_: removePun(argSet, pun),
-    u"replace": lambda argSet, start, end, *_: simpleReply(argSet,
+    u"removepun":  lambda argSet, pun, *_: removePun(argSet, pun),
+    u"replace":    lambda argSet, start, end, *_: simpleReply(argSet,
         re.compile(re.escape(start), re.IGNORECASE).sub(end, argSet[2][findNthInstance(3, argSet[2], u" ") + 1:])),
-    u"restart": lambda argSet, *_: restartBot(argSet),
-    u"schedule": scheduleEvent,
-    u"setnick": setNick,
-    u"to": to,
-    u"unalias": removeAlias,
-    u"unlink": lambda argSet, *args: Unlink(argSet, *args),
+    u"restart":    lambda argSet, *_: restartBot(argSet),
+    u"schedule":   scheduleEvent,
+    u"setnick":    setNick,
+    u"to":         to,
+    u"unalias":    removeAlias,
+    u"unlink":     lambda argSet, *args: Unlink(argSet, *args),
     u"unschedule": removeEvent,
-    u"users": listUsers,
-    u"yt": lambda argSet, *query: simpleReply(argSet, getYTURL(argSet[2])),
+    u"users":      listUsers,
+    u"yt":         lambda argSet, *_: simpleReply(argSet, getYTURL(argSet[2])),
 }
 helpText = {  # The help text for each command.
-    u"addpun": u"Adds a pun to the list of random puns.",
-    u"alias": u"Links a name to a command, or prints out the command run by an alias.",
-    u"aliases": u"Lists all of the aliases.",
-    u"aliasvars": u"%sendername, %botname, %chattitle, %chatname",
-    u"allevents": u"Lists all scheduled events.",
-    u"args": u"Prints out the arguments received from this message.",
-    u"atloc": u"Replies with who's said they're somewhere within the last hour and where they are.",
-    u"botme": u"Replies \"*(bot's name) (message)\", e.g. \"*NickBot DeLello died.\"",
-    u"chats": u"Lists all chats the bot knows of by name and ID.",
-    u"commands": u"Lists all of the commands.",
-    u"diceroll": u"Rolls the specified number of dice, returning the min, max, and sum of the rolls. 1d6 by default.",
-    u"echo": u"Repeats the message said.",
-    u"events": u"Lists all of the events you have scheduled.",
-    u"exit": u"Exits the bot.",
-    u"gds": u"Tells the chat you're going to GDS for some period of time.",
-    u"help": u"Prints out the syntax and usage of each command.",
+    u"addpun":     u"Adds a pun to the list of random puns.",
+    u"alias":      u"Links a name to a command, or prints out the command run by an alias.",
+    u"aliases":    u"Lists all of the aliases.",
+    u"aliasvars":  u"%sendername, %botname, %chattitle, %chatname",
+    u"allevents":  u"Lists all scheduled events.",
+    u"args":       u"Prints out the arguments received from this message.",
+    u"atloc":      u"Replies with who's said they're somewhere within the last hour and where they are.",
+    u"botme":      u"Replies \"*(bot's name) (message)\", e.g. \"*NickBot DeLello died.\"",
+    u"chats":      u"Lists all chats the bot knows of by name and ID.",
+    u"commands":   u"Lists all of the commands.",
+    u"diceroll":   u"Rolls the specified number of dice, returning the min, max, and sum of the rolls. 1d6 by default.",
+    u"echo":       u"Repeats the message said.",
+    u"events":     u"Lists all of the events you have scheduled.",
+    u"exit":       u"Exits the bot.",
+    u"gds":        u"Tells the chat you're going to GDS for some period of time.",
+    u"help":       u"Prints out the syntax and usage of each command.",
     u"lastreboot": u"Returns when the bot was started up.",
-    u"leftloc": u"Tells the chat you've left somewhere.",
-    u"link": u"Links from the first chat to the following chats.",
-    u"links": u"Prints out the current message links.",
-    u"loc": u"Tells the chat you've gone somewhere.",
-    u"loconly": u"Tells the chat you're going somewhere for an hour.",
-    u"me": u"Replies \"*(username) (message)\", e.g. \"*Gian Laput is French.\"",
-    u"mimic": u"Runs the specified command as if it was run by the specified user.",
-    u"msg": u"Sends a message to the specified chat. Matches incomplete names.",
-    u"nicks": u"Lists the nicknames of all users in the chat. If they don't have one, their name will not show up!",
-    u"ping": u"Replies \"Pong!\". Useful for checking if the bot is working.",
-    u"pun": u"Replies with a random pun.",
+    u"leftloc":    u"Tells the chat you've left somewhere.",
+    u"link":       u"Links from the first chat to the following chats.",
+    u"links":      u"Prints out the current message links.",
+    u"loc":        u"Tells the chat you've gone somewhere.",
+    u"loconly":    u"Tells the chat you're going somewhere for an hour.",
+    u"me":         u"Replies \"*(username) (message)\", e.g. \"*Gian Laput is French.\"",
+    u"mimic":      u"Runs the specified command as if it was run by the specified user.",
+    u"msg":        u"Sends a message to the specified chat. Matches incomplete names.",
+    u"nicks":      u"Lists the nicknames of all users in the chat. If they don't have one, their name will not show up!",
+    u"ping":       u"Replies \"Pong!\". Useful for checking if the bot is working.",
+    u"pun":        u"Replies with a random pun.",
     u"removenick": u"Removes a user's nickname.",
-    u"removepun": u"Removes a pun from the list of puns.",
-    u"replace": u"Replaces the text in the last argument(s) using the first and second.",
-    u"restart": u"Restarts the bot.",
-    u"schedule": u"Runs a command after the specified amount of time.",
-    u"setnick": u"Changes the nickname of the specified user.",
-    u"to": u"Sends a message with the provided person as a 'target'. Mainly used for aliases.",
-    u"unalias": u"Unlinks a name from a command.",
-    u"unlink": u"Unlinks the second and further chats from the first chat.",
-    u"unschedule": u"Unschedules the event with the given index. (The index should be from {}events)".format(
-        commandDelimiter),
-    u"users": u"Lists all of the users in the current chat.",
-    u"yt": u"Searches for a YouTube video using the query provided, and replies with the first result's URL."
+    u"removepun":  u"Removes a pun from the list of puns.",
+    u"replace":    u"Replaces the text in the last argument(s) using the first and second.",
+    u"restart":    u"Restarts the bot.",
+    u"schedule":   u"Runs a command after the specified amount of time.",
+    u"setnick":    u"Changes the nickname of the specified user.",
+    u"to":         u"Sends a message with the provided person as a 'target'. Mainly used for aliases.",
+    u"unalias":    u"Unlinks a name from a command.",
+    u"unlink":     u"Unlinks the second and further chats from the first chat.",
+    u"unschedule": u"Unschedules the event with the given index. (from {}events)".format(commandDelimiter),
+    u"users":      u"Lists all of the users in the current chat.",
+    u"yt":         u"Searches for a YouTube video using the query provided, and replies with the first result's URL."
 }
 
 
@@ -1225,8 +1222,6 @@ def messageListener(account, sender, message, conversation, flags):
     except:
         lastMessage = u"" + lastMessage
     argSet = (account, sender, message, conversation, flags)
-    print(*[u"" + u(repr(arg)) for arg in argSet])
-    print(*[purple.PurpleMarkupStripHtml(u"" + u(repr(arg))) for arg in argSet])
     lastMessageTime = now()
 
     # Strip HTML from Hangouts messages.
@@ -1342,7 +1337,7 @@ def periodicLoop():
     msgQueueLen = len(messageQueue)
     if msgQueueLen > 0:
         if msgQueueLen <= overflowThreshold:
-            for argSet in reversed(messageQueue):
+            for argSet in messageQueue:
                 try:
                     messageListener(*argSet)
                 except:
