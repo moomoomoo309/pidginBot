@@ -17,6 +17,7 @@ from json import dumps, loads
 from math import ceil
 from os import system as executeCommand
 from random import randint
+from signal import SIGTERM, SIGQUIT
 from time import sleep, strptime
 
 from gi.repository import GLib, GObject
@@ -237,8 +238,7 @@ def simpleReply(argSet, message):
 
 
 # Gets the ID of a conversation, given its name. Does not work if a message has not been received from that chat yet.
-getConvByName = lambda name: next(
-    (i for i in getChats() if purple.PurpleConversationGetTitle(i) == name), None)
+getConvByName = lambda name: next((i for i in getChats() if purple.PurpleConversationGetTitle(i) == name), None)
 
 logFile = open(u"Pidgin_Crossover_Messages.log", mode=u"a")
 
@@ -257,10 +257,11 @@ def log(msg):
 isListButNotString = lambda obj: isinstance(obj, (list, tuple, set)) and not isinstance(obj, string_types)
 
 # Read files for persistent values.
-messageLinks, puns, aliases, atLoc, scheduledEvents, nicks = readFiles(u"messageLinks.json", u"Puns.json",
-    u"Aliases.json", u"atLoc.json", u"scheduledEvents.json", u"nicks.json")
+messageLinks, puns, aliases, atLoc, scheduledEvents, nicks, commandDelimiters = readFiles(u"messageLinks.json",
+    u"Puns.json", u"Aliases.json", u"atLoc.json", u"scheduledEvents.json", u"nicks.json", u"commandDelimiters.json")
 
-commandDelimiter = u"!?"  # What character(s) the commands should start with.
+commandDelimiter = u"!"  # What character(s) the commands should start with.
+commandDelimiters = commandDelimiters or dict()
 lastMessage = u""  # The last message, to prevent infinite looping.
 defaultLocMinutes = 45
 defaultLocTime = u"{} minutes".format(defaultLocMinutes)  # What to use when someone goes somewhere by default.
@@ -321,11 +322,11 @@ def restartFinch(*_):
         return
     print(u"Restarting libpurple client...")
     restartingBot = True
-    executeCommand(u"killall -q {}".format(libpurpleClient))
+    executeCommand(u"/bin/bash -c 'killall -q {}'".format(libpurpleClient))
     if runInTerminal:
-        executeCommand(u"x-terminal-emulator -e \"{}\" &".format(libpurpleClient))
+        executeCommand(u"/bin/bash -c 'x-terminal-emulator -e \"{}\" &'".format(libpurpleClient))
     else:
-        executeCommand(libpurpleClient + u" &")
+        executeCommand(u"/bin/bash -c '" + libpurpleClient + u" &'")
     sleep(1)
     restartingBot = False
 
@@ -346,7 +347,7 @@ def getPun(argSet, punFilter):
         return u"No puns found!"
     if not punFilter:
         return puns[chat][randint(0, len(puns[chat]) - 1)]
-    validPuns = list(filter(lambda pun: str(punFilter) in str(pun), puns[chat]))
+    validPuns = list(filter(lambda pun: str(u" "+punFilter) in str(pun), puns[chat]))
     return (validPuns[randint(0, len(validPuns) - 1)]) if len(validPuns) > 0 else (
             u"Does not punpute! Random Pun: " + puns[chat][randint(0, len(puns) - 1)])
 
@@ -491,7 +492,7 @@ def addAlias(argSet, *_):
     command = command[len(commandDelimiter):] if command[:len(commandDelimiter)] == commandDelimiter else command
     argsMsg = message[message.find(u" ") + 1 + len(commandDelimiter):]
     if u" " not in message:  # If the user is asking for the command run by a specific alias.
-        for _chat in messageLinks[chat]:
+        for _chat in (chat in messageLinks and messageLinks[chat] or [chat]):
             if str(command) in aliases[_chat]:  # If the alias asked for does not exist.
                 chat = _chat
                 break
@@ -576,7 +577,7 @@ def getUserFromName(argSet, partialName, nick=True):
             u"" + botName]
 
     chats = [argSet[3]]
-    if messageLinks[chat]:
+    if chat in messageLinks and messageLinks[chat]:
         chats += [_chat for _chat in getChats() if getChatName(_chat) in messageLinks[chat]]
     users = dict()
     _users = list(chain([purple.PurpleConvChatGetUsers(purple.PurpleConvChat(int(chat)))] for chat in chats))
@@ -996,7 +997,7 @@ def listUsers(argSet, *_):
     """
     chat = getChatName(argSet[3])
     chats = [argSet[3]]
-    if messageLinks[chat]:
+    if chat in messageLinks and messageLinks[chat]:
         chats += [_chat for _chat in getChats() if getChatName(_chat) in messageLinks[chat]]
     users = dict()
     _users = list(chain([purple.PurpleConvChatGetUsers(purple.PurpleConvChat(int(chat)))] for chat in chats))
@@ -1123,6 +1124,9 @@ def runCommand(argSet, command, *args):
     """
     command = (command or argSet[2][:argSet[2].find(u" ")]).lower()
     chat = getChatName(argSet[3])
+    global commandDelimiter
+    oldCommandDelimiter = commandDelimiter
+    commandDelimiter = commandDelimiters[chat] if chat in commandDelimiters else commandDelimiter
     aliases[chat] = aliases[chat] if chat in aliases else {}
     if command in commands:
         commands[command](argSet, *args)
@@ -1150,7 +1154,9 @@ def runCommand(argSet, command, *args):
             extraArgs = newMsg.split(u" ")[1:]
             commands[cmd.split(u" ", 1)[0]]((argSet[0], argSet[1], newMsg, argSet[3], argSet[4]),
                 *extraArgs)  # Run the alias's command
+            commandDelimiter = oldCommandDelimiter
             return True
+    commandDelimiter = oldCommandDelimiter
     return False
 
 
@@ -1225,7 +1231,8 @@ def messageListener(account, sender, message, conversation, flags):
     lastMessageTime = now()
 
     # Strip HTML from Hangouts messages.
-    message = purple.PurpleMarkupStripHtml(message) if message.startswith(u"<") else message
+    # TODO: Is this needed?
+    # message = purple.PurpleMarkupStripHtml(message) if message.startswith(u"<") else message
 
     nick = getNameFromArgs(account, sender) or sender  # Name which will appear on the log.
 
@@ -1245,9 +1252,11 @@ def messageListener(account, sender, message, conversation, flags):
             if not runCommand(argSet, command.lower(), *args):
                 simpleReply(argSet, u"Command/alias \"{}\" not found. {}".format(
                     command, getCommands(argSet)))
-        except SystemExit:
+        except SystemExit:  # This isn't an error, so it's okay.
+            exitProcess(SIGQUIT)
             return
-        except KeyboardInterrupt:
+        except KeyboardInterrupt:  # I don't know if I can actually catch this exception, but it'll stop either way.
+            exitProcess(SIGTERM)
             return
         except:
             simpleReply(argSet, u"Command errored! Error message: \"{}\"".format(traceback.format_exc()))
