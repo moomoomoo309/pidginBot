@@ -13,7 +13,7 @@ from argparse import ArgumentError
 from datetime import datetime, timedelta
 from io import open
 from itertools import chain
-from json import dumps, loads
+from json import dumps as writeToJSON, loads as readFromJSON
 from math import ceil
 from os import system as executeCommand
 from random import randint
@@ -49,10 +49,10 @@ def readFile(path):
     try:
         with open(path, mode=u"r+") as fileHandle:  # With is nice and clean.
             out = None
-            strFile = fileHandle.read(-1)
+            strFile = fileHandle.read()
             if out is None and strFile != u"":
                 try:
-                    out = loads(strFile)  # json.loads is WAY faster than ast.literal_eval!
+                    out = readFromJSON(strFile)
                 except ValueError:
                     pass
     except IOError:
@@ -84,13 +84,13 @@ def updateFile(path, value):
 
     @param path The file path of the file to overwrite.
     @type path string_types
-    @param value The string_types string to overwrite the file with.
+    @param value The string to overwrite the file with.
     @type value string_types
     """
 
     serializeDate = lambda dtOrStr: dtOrStr.strftime(dtFormatStr) if isinstance(dtOrStr, datetime) else None
     with open(path, mode=u"w", encoding=u"utf-8") as openFile:  # To update a file
-        openFile.write(dumps(value, indent=4, default=serializeDate, ensure_ascii=False))
+        openFile.write(writeToJSON(value, indent=4, default=serializeDate, ensure_ascii=False))
         # The default function allows it to dump datetime objects.
 
 
@@ -110,6 +110,7 @@ def getNameFromArgs(act, name, conv=None):
     act = purple.PurpleConversationGetAccount(conv) if conv is not None else act
     buddy = purple.PurpleFindBuddy(act, name)
     realName = purple.PurpleBuddyGetAlias(buddy) or purple.PurpleBuddyGetName(buddy)
+    acct = purple.PurpleBuddyGetAccount(buddy)
     chat = None  # This is here so PyCharm doesn't complain about chat not existing in the return statement.
     if conv is not None:
         chat = getChatName(conv)
@@ -262,7 +263,7 @@ messageLinks, puns, aliases, atLoc, scheduledEvents, nicks, commandDelimiters = 
 
 commandDelimiter = u"!"  # What character(s) the commands should start with.
 commandDelimiters = commandDelimiters or dict()
-lastMessage = u""  # The last message, to prevent infinite looping.
+lastMessage = dict()  # The last message, to prevent infinite looping.
 defaultLocMinutes = 45
 defaultLocTime = u"{} minutes".format(defaultLocMinutes)  # What to use when someone goes somewhere by default.
 now = datetime.now
@@ -278,7 +279,7 @@ aliasVars = [  # Replace the string with the result from the lambda below.
     (u"%sendername", lambda argSet: getNameFromArgs(argSet[0], argSet[1], argSet[3])),
     (u"%botname", lambda argSet: purple.PurpleAccountGetAlias(argSet[0])),
     (u"%chattitle", lambda argSet: purple.PurpleConversationGetTitle(argSet[3])),
-    (u"%chatname", lambda argSet: purple.PurpleConversationGetName(argSet[3]))
+    (u"%chatname", lambda argSet: purple.PurpleConversationGetName(argSet[3])),
 ]
 nicks = nicks or {}
 dtFormatStr = u"%a, %d %b %Y %H:%M:%S UTC"
@@ -327,11 +328,23 @@ def restartFinch(*_):
         executeCommand(u"/bin/bash -c 'x-terminal-emulator -e \"{}\" &'".format(libpurpleClient))
     else:
         executeCommand(u"/bin/bash -c '" + libpurpleClient + u" &'")
-    sleep(1)
+    sleep(5)
     restartingBot = False
 
 
-def getPun(argSet, punFilter):
+def tellPun(argSet, chosenPun):
+    lastSentenceIndex = max(map(chosenPun[:-1 if chosenPun[-1] in ';:!?.' else None].rfind, ';:!?.'))
+    print(lastSentenceIndex)
+    if lastSentenceIndex != -1:
+        simpleReply(argSet, chosenPun[:lastSentenceIndex + 1])
+        argSet = [_ for _ in argSet]
+        argSet[2] = u"!schedule 3 seconds !echo {pun}".format(pun=chosenPun[lastSentenceIndex + 2:])
+        scheduleEvent(tuple(argSet), True)
+    else:
+        simpleReply(argSet, chosenPun)
+
+
+def pun(argSet, punFilter):
     """
     Gets a random pun, or a random pun that satisfies the provided filter.
 
@@ -344,12 +357,13 @@ def getPun(argSet, punFilter):
     chat = getChatName(argSet[3])
     puns[chat] = puns[chat] if chat in puns else []
     if len(puns[chat]) == 0:
-        return u"No puns found!"
+        return simpleReply(argSet, u"No puns found!")
     if not punFilter:
-        return puns[chat][randint(0, len(puns[chat]) - 1)]
-    validPuns = list(filter(lambda pun: str(u" "+punFilter) in str(pun), puns[chat]))
-    return (validPuns[randint(0, len(validPuns) - 1)]) if len(validPuns) > 0 else (
-            u"Does not punpute! Random Pun: " + puns[chat][randint(0, len(puns) - 1)])
+        return tellPun(argSet, puns[chat][randint(0, len(puns[chat]) - 1)])
+    validPuns = list(filter(lambda pun: str(u" " + punFilter) in str(pun), puns[chat]))
+    chosenPun = (validPuns[randint(0, len(validPuns) - 1)]) if len(validPuns) > 0 else (
+            u"Does not punpute! Random Pun:\n" + puns[chat][randint(0, len(puns) - 1)])
+    tellPun(argSet, chosenPun)
 
 
 def Help(argSet, page=u"", *_):
@@ -758,12 +772,14 @@ def AtLoc(argSet, *_):
             u"No one went {} recently.".format(location if location == u"anywhere" else u"to " + location))
 
 
-def scheduleEvent(argSet, *_):
+def scheduleEvent(argSet, quiet=False, *_):
     """
     Schedules the given command to run at the given time.
 
     @param argSet The set of values passed in to messageListener.
     @type argSet tuple
+    @param quiet Whether or not a message should be sent.
+    @type quiet boolean
     """
     msg = argSet[2][len(commandDelimiter) + 9:]
     if commandDelimiter in msg:
@@ -777,7 +793,8 @@ def scheduleEvent(argSet, *_):
     newArgset[0] = purple.PurpleAccountGetUsername(argSet[0])
     scheduledEvents.append((getTime(timeStr), newArgset))
     updateFile(u"scheduledEvents.json", scheduledEvents)
-    simpleReply(argSet, u"\"{}\" scheduled to run {}.".format(cmdStr, naturalTime(getTime(timeStr))))
+    if not quiet:
+        simpleReply(argSet, u"\"{}\" scheduled to run {}.".format(cmdStr, naturalTime(getTime(timeStr))))
 
 
 def getEvents(argSet, *_):
@@ -1017,55 +1034,54 @@ def listUsers(argSet, *_):
 
 
 commands = {  # A dict containing the functions to run when a given command is entered.
-    u"addpun":     lambda argSet, *_: addPun(argSet, argSet[2][7 + len(commandDelimiter):]),
-    u"alias":      addAlias,
-    u"aliases":    lambda argSet, *_: simpleReply(argSet, getAliases(argSet)),
-    u"allevents":  getAllEvents,
-    u"args":       lambda argSet, *_: simpleReply(argSet, u"" + str(argSet)),
-    u"atloc":      AtLoc,
-    u"botme":      lambda argSet, *_: simpleReply(argSet,
+    u"addpun":       lambda argSet, *_: addPun(argSet, argSet[2][7 + len(commandDelimiter):]),
+    u"alias":        addAlias,
+    u"aliases":      lambda argSet, *_: simpleReply(argSet, getAliases(argSet)),
+    u"allevents":    getAllEvents,
+    u"args":         lambda argSet, *_: simpleReply(argSet, u"" + str(argSet)),
+    u"atloc":        AtLoc,
+    u"botme":        lambda argSet, *_: simpleReply(argSet,
         u"*{} {}.".format(purple.PurpleAccountGetAlias(argSet[0]), argSet[2][6 + len(commandDelimiter):])),
-    u"chats":      lambda argSet, *_: simpleReply(argSet,
-        u"" + str([u"{} ({})".format(purple.PurpleConversationGetTitle(conv), conv) for conv in getChats()])[
-        1:-1].replace(u"u'", u"'")),
-    u"commands":   lambda argSet, *_: simpleReply(argSet, getCommands(argSet)),
-    u"diceroll":   diceRoll,
-    u"echo":       lambda argSet, *_: simpleReply(argSet,
-        argSet[2][argSet[2].lower().find(u"echo") + 4 + len(commandDelimiter):]),
-    u"events":     getEvents,
-    u"exit":       lambda *_: exitProcess(37),
-    u"gds":        lambda argSet, *_: Loc(argSet, time=argSet[2][len(commandDelimiter) + 4:]),
-    u"help":       Help,
-    u"htmlescape": lambda argSet, *_: simpleReply(argSet, purple.PurpleMarkupStripHtml(argSet[2][11:])),
-    u"lastreboot": lambda argSet, *_: simpleReply(argSet,
+    u"chats":        lambda argSet, *_: simpleReply(argSet,
+        u", ".join([u"{} ({})".format(purple.PurpleConversationGetTitle(conv), conv) for conv in getChats()])),
+    u"commands":     lambda argSet, *_: simpleReply(argSet, getCommands(argSet)),
+    u"diceroll":     diceRoll,
+    u"echo":         lambda argSet, *_: simpleReply(argSet, argSet[2][5 + len(commandDelimiter):]),
+    u"events":       getEvents,
+    u"exit":         lambda *_: exitProcess(37),
+    u"gds":          lambda argSet, *_: Loc(argSet, time=argSet[2][len(commandDelimiter) + 4:]),
+    u"help":         Help,
+    u"htmlescape":   lambda argSet, *_: simpleReply(argSet, purple.PurpleMarkupStripHtml(argSet[2][11:])),
+    u"htmlunescape": lambda argSet, *_: simpleReply(argSet, purple.PurpleUnescapeHtml(argSet[2][13:])),
+    u"lastreboot":   lambda argSet, *_: simpleReply(argSet,
         u"{}, ({})".format(naturalTime(startTime), startTime.strftime("%a, %b %m %Y at %I:%M%p"))),
-    u"leftloc":    leftLoc,
-    u"link":       lambda argSet, *args: Link(argSet, *args),
-    u"links":      lambda argSet, *_: simpleReply(argSet, u"" + str(messageLinks)),
-    u"loc":        loc,
-    u"loconly":    lambda argSet, *_: Loc(argSet, location=argSet[2][len(commandDelimiter) + 8:]),
-    u"me":         lambda argSet, *_: simpleReply(argSet, replaceAliasVars(argSet,
+    u"leftloc":      leftLoc,
+    u"link":         lambda argSet, *args: Link(argSet, *args),
+    u"links":        lambda argSet, *_: simpleReply(argSet, u"" + str(messageLinks)),
+    u"loc":          loc,
+    u"loconly":      lambda argSet, *_: Loc(argSet, location=argSet[2][len(commandDelimiter) + 8:]),
+    u"me":           lambda argSet, *_: simpleReply(argSet, replaceAliasVars(argSet,
         u"*{} {}.".format(getNameFromArgs(argSet[0], argSet[1], argSet[3]), argSet[2][3 + len(commandDelimiter):]))),
-    u"mimic":      Mimic,
-    u"msg":        lambda argSet, msg="", *_: sendMessage(argSet[-2], getConvFromPartialName(msg), u"",
+    u"mimic":        Mimic,
+    u"msg":          lambda argSet, msg="", *_: sendMessage(argSet[-2], getConvFromPartialName(msg), u"",
         getNameFromArgs(*argSet[:2]) + ": " + argSet[2][
         argSet[2][4 + len(commandDelimiter):].find(u" ") + 5 + len(commandDelimiter):]),
-    u"nicks":      getNicks,
-    u"ping":       lambda argSet, *_: simpleReply(argSet, u"Pong!"),
-    u"pun":        lambda argSet, pun=u"", *_: simpleReply(argSet, getPun(argSet, pun)),
-    u"removenick": removeNick,
-    u"removepun":  lambda argSet, pun, *_: removePun(argSet, pun),
-    u"replace":    lambda argSet, start, end, *_: simpleReply(argSet,
+    u"nicks":        getNicks,
+    u"ping":         lambda argSet, *_: simpleReply(argSet, u"Pong!"),
+    u"pun":          lambda argSet, _pun=u"", *_: pun(argSet, _pun),
+    u"removenick":   removeNick,
+    u"removepun":    lambda argSet, pun, *_: removePun(argSet, pun),
+    u"replace":      lambda argSet, start, end, *_: simpleReply(argSet,
         re.compile(re.escape(start), re.IGNORECASE).sub(end, argSet[2][findNthInstance(3, argSet[2], u" ") + 1:])),
-    u"restart":    lambda argSet, *_: restartBot(argSet),
-    u"schedule":   scheduleEvent,
-    u"setnick":    setNick,
-    u"to":         to,
-    u"unalias":    removeAlias,
-    u"unlink":     lambda argSet, *args: Unlink(argSet, *args),
-    u"unschedule": removeEvent,
-    u"users":      listUsers,
-    u"yt":         lambda argSet, *_: simpleReply(argSet, getYTURL(argSet[2])),
+    u"restart":      lambda argSet, *_: restartBot(argSet),
+    u"schedule":     scheduleEvent,
+    u"setnick":      setNick,
+    u"to":           to,
+    u"unalias":      removeAlias,
+    u"unlink":       lambda argSet, *args: Unlink(argSet, *args),
+    u"unschedule":   removeEvent,
+    u"users":        listUsers,
+    u"yt":           lambda argSet, *_: simpleReply(argSet, getYTURL(argSet[2])),
 }
 helpText = {  # The help text for each command.
     u"addpun":     u"Adds a pun to the list of random puns.",
@@ -1124,9 +1140,6 @@ def runCommand(argSet, command, *args):
     """
     command = (command or argSet[2][:argSet[2].find(u" ")]).lower()
     chat = getChatName(argSet[3])
-    global commandDelimiter
-    oldCommandDelimiter = commandDelimiter
-    commandDelimiter = commandDelimiters[chat] if chat in commandDelimiters else commandDelimiter
     aliases[chat] = aliases[chat] if chat in aliases else {}
     if command in commands:
         commands[command](argSet, *args)
@@ -1154,9 +1167,7 @@ def runCommand(argSet, command, *args):
             extraArgs = newMsg.split(u" ")[1:]
             commands[cmd.split(u" ", 1)[0]]((argSet[0], argSet[1], newMsg, argSet[3], argSet[4]),
                 *extraArgs)  # Run the alias's command
-            commandDelimiter = oldCommandDelimiter
             return True
-    commandDelimiter = oldCommandDelimiter
     return False
 
 
@@ -1224,15 +1235,13 @@ def messageListener(account, sender, message, conversation, flags):
     except:
         message = u"" + message
     try:
-        lastMessage = u"" + lastMessage.decode(encoding=u"utf-8", errors=u"ignore")
+        lastMessage[conversation] = u"" + (
+                    conversation in lastMessage and lastMessage[conversation].decode(encoding=u"utf-8",
+                errors=u"ignore") or u"")
     except:
-        lastMessage = u"" + lastMessage
+        lastMessage[conversation] = u"" + (conversation in lastMessage and lastMessage[conversation] or u"")
     argSet = (account, sender, message, conversation, flags)
     lastMessageTime = now()
-
-    # Strip HTML from Hangouts messages.
-    # TODO: Is this needed?
-    # message = purple.PurpleMarkupStripHtml(message) if message.startswith(u"<") else message
 
     nick = getNameFromArgs(account, sender) or sender  # Name which will appear on the log.
 
@@ -1241,9 +1250,32 @@ def messageListener(account, sender, message, conversation, flags):
         logFile.flush()
     except UnicodeError:
         pass
+
+    # Send messages to connected chats.
+    try:
+        if message == lastMessage[conversation] or purple.PurpleAccountGetNameForDisplay(
+                account) == nick:  # Makes sure the messages don't loop infinitely.
+            return
+    except:
+        pass
+    title = purple.PurpleConversationGetTitle(conversation)
+    if title in messageLinks:  # Gets conversations by their title, so they work across libpurple reboots.
+        if isListButNotString(messageLinks[title]):
+            for receiving in messageLinks[title]:  # It can send to multiple chats.
+                receiving = getConvByName(receiving)
+                sendMessage(conversation, receiving, nick, message)
+        else:
+            receiving = getConvByName(messageLinks[title])
+            sendMessage(conversation, receiving, nick, message)
+    lastMessage[conversation] = nick + u": " + message  # Remember the last message to prevent infinite looping.
+
     # Run commands if the message starts with the command character.
-    global wasCommand
+    global wasCommand, commandDelimiter
     wasCommand = False
+    oldCommandDelimiter = commandDelimiter
+    chat = getChatName(conversation)
+    commandDelimiter = commandDelimiters[chat] if chat in commandDelimiters else oldCommandDelimiter
+
     if message[:len(commandDelimiter)] == commandDelimiter:
         wasCommand = True
         command = message[len(commandDelimiter):message.find(u" ") if u" " in message else len(message)].lower()
@@ -1260,23 +1292,7 @@ def messageListener(account, sender, message, conversation, flags):
             return
         except:
             simpleReply(argSet, u"Command errored! Error message: \"{}\"".format(traceback.format_exc()))
-
-    # Send messages to connected chats.
-    try:
-        if message == lastMessage:  # Makes sure the messages don't loop infinitely.
-            return
-    except:
-        pass
-    title = purple.PurpleConversationGetTitle(conversation)
-    if title in messageLinks:  # Gets conversations by their title, so they work across libpurple reboots.
-        if isListButNotString(messageLinks[title]):
-            for receiving in messageLinks[title]:  # It can send to multiple chats.
-                receiving = getConvByName(receiving)
-                sendMessage(conversation, receiving, nick, message)
-        else:
-            receiving = getConvByName(messageLinks[title])
-            sendMessage(conversation, receiving, nick, message)
-    lastMessage = nick + u": " + message  # Remember the last message to prevent infinite looping.
+    commandDelimiter = oldCommandDelimiter
 
 
 def processEvents(threshold=timedelta(seconds=2)):
@@ -1330,7 +1346,8 @@ def queueMessage(account, sender, message, conversation, flags):
     argSet = (account, sender, message, conversation, flags)
     if purple.PurpleAccountGetAlias(account) == sender or \
             purple.PurpleAccountGetAlias(account) == getNameFromArgs(account, sender) or \
-            purple.PurpleAccountGetUsername(account) == sender:
+            purple.PurpleAccountGetUsername(account) == sender or \
+            purple.PurpleAccountGetUsername(account) == getNameFromArgs(account, sender):
         return
     messageQueue.append(argSet)
 
@@ -1339,8 +1356,8 @@ def periodicLoop():
     """
     Used for any tasks that may need to run in the background.
 
-    @return True
-    @rtype True
+    @return True if the program is not closing, False if it is closing.
+    @rtype bool
     """
     processEvents()
     msgQueueLen = len(messageQueue)
