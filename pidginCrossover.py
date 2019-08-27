@@ -33,7 +33,8 @@ from youtube_dl import YoutubeDL as ydl
 def dump(obj):
     """
     Dumps an object's properties into the console.
-    @param obj The object to dump
+
+    :param obj: The object to dump
     """
     map(lambda attr: print(u"obj.{} = {}".format(attr, getattr(obj, attr))), dir(obj))
 
@@ -42,9 +43,9 @@ def readFile(path):
     """
     Reads, then parses the file at the given path as json.
 
-    @param path The file path of the file.
-    @type path string_types
-    @return The file parsed as json.
+    :param path: The file path of the file.
+    :type path: string_types
+    :return The: file parsed as json.
     """
     try:
         with open(path, mode=u"r+") as fileHandle:  # With is nice and clean.
@@ -67,7 +68,7 @@ def getChats():
     """
     Returns all valid chat ids, filtering out any duplicate or invalid chats.
 
-    @return All valid chat ids, filtering out any duplicate or invalid chats.
+    :return All: valid chat ids, filtering out any duplicate or invalid chats.
     """
     rawChats = purple.PurpleGetConversations()
     chatIDs = dict()
@@ -82,10 +83,10 @@ def updateFile(path, value):
     """
     Replaces the contents of the file at the given path with the given value.
 
-    @param path The file path of the file to overwrite.
-    @type path string_types
-    @param value The string to overwrite the file with.
-    @type value string_types
+    :param path: The file path of the file to overwrite.
+    :type path: string_types
+    :param value: The string to overwrite the file with.
+    :type value: string_types
     """
 
     serializeDate = lambda dtOrStr: dtOrStr.strftime(dtFormatStr) if isinstance(dtOrStr, datetime) else None
@@ -102,10 +103,11 @@ naturalDelta = lambda time: naturaldelta(time - timedelta(seconds=1))
 def getNameFromArgs(act, name, conv=None):
     """
     Gets a user's actual name given the account and name.
-    @param act The account from the argSet.
-    @param name The user's name from the argSet.
-    @param conv The conversation from the argSet.
-    @return The user's nickname, or their actual name if no nick was found.
+
+    :param act: The account from the argSet.
+    :param name: The user's name from the argSet.
+    :param conv: The conversation from the argSet.
+    :return The: user's nickname, or their actual name if no nick was found.
     """
     act = purple.PurpleConversationGetAccount(conv) if conv is not None else act
     buddy = purple.PurpleFindBuddy(act, name)
@@ -124,10 +126,10 @@ def getTime(currTime):
     """
     Given a natural time string, such as "in 30 minutes", returns that time as a datetime object.
 
-    @param currTime A natural time string, such as "in 30 minutes" or "7 PM".
-    @type currTime string_types
-    @return The natural time as a datetime object.
-    @rtype datetime
+    :param currTime: A natural time string, such as "in 30 minutes" or "7 PM".
+    :type currTime: string_types
+    :return The: natural time as a datetime object.
+    :rtype datetime:
     """
     return parser.parseDT(currTime)[0]
 
@@ -135,12 +137,13 @@ def getTime(currTime):
 def _formatCommandAndAliases(lst, formatStr):
     """
     Formats the commands and aliases alphabetically in a nice way.
-    @param lst The list of commands/aliases.
-    @type lst list
-    @param formatStr The format string to use with the list of aliases.
-    @type formatStr string_types
-    @return The commands and aliases formatted alphabetically, as a unicode string.
-    @rtype string_types
+
+    :param lst: The list of commands/aliases.
+    :type lst: list
+    :param formatStr: The format string to use with the list of aliases.
+    :type formatStr: string_types
+    :return The: commands and aliases formatted alphabetically, as a unicode string.
+    :rtype string_types:
     """
     lastValue = None
     alphabeticalLists = []
@@ -162,10 +165,11 @@ def _formatCommandAndAliases(lst, formatStr):
 def getAliases(argSet):
     """
     Returns all of the valid aliases, formatted nicely.
-    @param argSet The set of values passed in to messageListener.
-    @type argSet tuple
-    @return All of the valid aliases, formatted nicely.
-    @rtype string_types
+
+    :param argSet: The set of values passed in to messageListener.
+    :type argSet: tuple
+    :return All: of the valid aliases, formatted nicely.
+    :rtype string_types:
     """
     availableAliases = dict()
     convTitle = purple.PurpleConversationGetTitle(argSet[3])
@@ -184,10 +188,11 @@ def getAliases(argSet):
 def getCommands(argSet):
     """
     Returns a list of all of the commands.
-    @param argSet The set of values passed in to messageListener.
-    @type argSet tuple
-    @return A list of all of the commands.
-    @rtype string_types
+
+    :param argSet: The set of values passed in to messageListener.
+    :type argSet: tuple
+    :return A: list of all of the commands.
+    :rtype string_types:
     """
     commandList = list(sorted(commands.keys()))
     return _formatCommandAndAliases(commandList, u"Valid Commands: {}") + "\n" + getAliases(argSet)
@@ -197,10 +202,10 @@ def getFullConvName(partialName):
     """
     Returns a full conversation title given a partial title.
 
-    @param partialName The incomplete name of the conversation.
-    @type partialName string_types
-    @return The conversation ID.
-    @rtype int
+    :param partialName: The incomplete name of the conversation.
+    :type partialName: string_types
+    :return The: conversation ID.
+    :rtype int:
     """
     conversations = [purple.PurpleConversationGetTitle(conv) for conv in getChats()]
     # Check the beginning first, if none start with the partial name, find it in there somewhere.
@@ -216,10 +221,10 @@ def simpleReply(argSet, message):
     """
     Sends the message to the chat matching the given argSet.
 
-    @param argSet The set of values passed in to messageListener.
-    @type argSet tuple
-    @param message The message to send out.
-    @type message string_types
+    :param argSet: The set of values passed in to messageListener.
+    :type argSet: tuple
+    :param message: The message to send out.
+    :type message: string_types
     """
     sendMessage(argSet[-2], argSet[-2], u"", message)  # Replies to a chat
 
@@ -247,8 +252,9 @@ logFile = open(u"Pidgin_Crossover_Messages.log", mode=u"a")
 def log(msg):
     """
     Writes msg into the console and appends it to the log file.
-    @param msg The string to write.
-    @type msg string_types
+
+    :param msg: The string to write.
+    :type msg: string_types
     """
     print(msg)
     print(msg, file=logFile)
@@ -297,12 +303,12 @@ def replaceAliasVars(argSet, message):
     """
     Given the original message, replaces any alias vars (see above) with their proper values.
 
-    @param argSet The set of values passed in to messageListener.
-    @type argSet tuple
-    @param message The message to replace. Will not use the message in argSet.
-    @type message string_types
-    @return Themessage, with all of the alias variables replaced.
-    @rtype string_types    """
+    :param argSet: The set of values passed in to messageListener.
+    :type argSet: tuple
+    :param message: The message to replace. Will not use the message in argSet.
+    :type message: string_types
+    :return Themessage:, with all of the alias variables replaced.
+    :rtype string_types:    """
     newMsg = message  # Don't touch the original
     for i in aliasVars:
         try:
@@ -315,6 +321,7 @@ def replaceAliasVars(argSet, message):
 def restartFinch(*_):
     """
     Restarts finch using bash.
+
     :param _: All parameters are ignored.
     :return: None
     """
@@ -333,34 +340,42 @@ def restartFinch(*_):
 
 
 def tellPun(argSet, chosenPun):
-    lastSentenceIndex = max(map(chosenPun[:-1 if chosenPun[-1] in ';:!?.' else None].rfind, ';:!?.'))
+    """
+    Tells a pun, sending the beginning of it up until the last sentence, waiting three seconds, then sending the last sentence (the punchline)
+
+    :param argSet: The set of values passed in to messageListener.
+    :type argSet: tuple
+    :param chosenPun: The pun to tell.
+    :type chosenPun: string_types
+    """
+    lastSentenceIndex = max(map(chosenPun.rstrip(';:!?.').rfind, ';:!?.'))
     print(lastSentenceIndex)
     if lastSentenceIndex != -1:
-        simpleReply(argSet, chosenPun[:lastSentenceIndex + 1])
+        simpleReply(argSet, chosenPun[:lastSentenceIndex + 1].rstrip())
         argSet = [_ for _ in argSet]
-        argSet[2] = u"!schedule 3 seconds !echo {pun}".format(pun=chosenPun[lastSentenceIndex + 2:])
+        argSet[2] = u"!schedule 3 seconds !echo {pun}".format(pun=chosenPun[lastSentenceIndex + 1:].lstrip())
         scheduleEvent(tuple(argSet), True)
     else:
         simpleReply(argSet, chosenPun)
 
 
-def pun(argSet, punFilter):
+def pun(argSet, *punFilter):
     """
     Gets a random pun, or a random pun that satisfies the provided filter.
 
-    @param argSet The set of values passed in to messageListener.
-    @type argSet tuple
-    @param punFilter A string filtering the puns out.
-    @type punFilter string_types
-    @return A random pun from puns.json.
-    @rtype string_types    """
+    :param argSet: The set of values passed in to messageListener.
+    :type argSet: tuple
+    :param punFilter: A string filtering the puns out.
+    :type punFilter: string_types
+    :return A: random pun from puns.json.
+    :rtype string_types:    """
     chat = getChatName(argSet[3])
     puns[chat] = puns[chat] if chat in puns else []
     if len(puns[chat]) == 0:
         return simpleReply(argSet, u"No puns found!")
-    if not punFilter:
+    if len(punFilter) == 0:
         return tellPun(argSet, puns[chat][randint(0, len(puns[chat]) - 1)])
-    validPuns = list(filter(lambda pun: str(u" " + punFilter) in str(pun), puns[chat]))
+    validPuns = list(filter(lambda pun: str(u" ".join(punFilter)) in str(pun), puns[chat]))
     chosenPun = (validPuns[randint(0, len(validPuns) - 1)]) if len(validPuns) > 0 else (
             u"Does not punpute! Random Pun:\n" + puns[chat][randint(0, len(puns) - 1)])
     tellPun(argSet, chosenPun)
@@ -370,10 +385,10 @@ def Help(argSet, page=u"", *_):
     """
     Returns help text for the given command, or a page listing all commands.
 
-    @param argSet The set of values passed in to messageListener.
-    @type argSet tuple
-    @param page The page number it should be on, as a string_types string.
-    @type page string_types
+    :param argSet: The set of values passed in to messageListener.
+    :type argSet: tuple
+    :param page: The page number it should be on, as a string_types string.
+    :type page: string_types
     """
     iterableCommands = tuple(sorted(commands.keys()))  # A tuple containing all of the keys in iterableCommands.
     commandsPerPage = 10  # How many commands to show per page.
@@ -397,12 +412,12 @@ def Link(argSet, chat, *chats):
     """
     Links chats to chat. Supports partial names.
 
-    @param argSet The set of values passed in to messageListener.
-    @type argSet tuple
-    @param chat The partial name of the chat to link the current chat to.
-    @type chat string_types
-    @param chats A list of all of the chats available.
-    @type chats tuple
+    :param argSet: The set of values passed in to messageListener.
+    :type argSet: tuple
+    :param chat: The partial name of the chat to link the current chat to.
+    :type chat: string_types
+    :param chats: A list of all of the chats available.
+    :type chats: tuple
     """
     fullChatName = getFullConvName(chat)
     fullChatNames = sorted([getFullConvName(chat) for chat in chats])
@@ -428,12 +443,12 @@ def Unlink(argSet, chat, *chats):
     """
     Unlinks chats from chat. Supports partial names.
 
-    @param argSet The set of values passed in to messageListener.
-    @type argSet tuple
-    @param chat The partial name of the chat to unlink from the current chat.
-    @type chat string_types
-    @param chats A list of all of the chats available.
-    @type chats tuple
+    :param argSet: The set of values passed in to messageListener.
+    :type argSet: tuple
+    :param chat: The partial name of the chat to unlink from the current chat.
+    :type chat: string_types
+    :param chats: A list of all of the chats available.
+    :type chats: tuple
     """
     fullChatName = getFullConvName(chat)
     removedChats = []
@@ -458,10 +473,10 @@ def addPun(argSet, pun):
     """
     Adds a pun to the pun list, then updates the file.
 
-    @param argSet The set of values passed in to messageListener.
-    @type argSet tuple
-    @param pun The pun to add to the pun list.
-    @type pun string_types
+    :param argSet: The set of values passed in to messageListener.
+    :type argSet: tuple
+    :param pun: The pun to add to the pun list.
+    :type pun: string_types
     """
     chat = getChatName(argSet[3])
     puns[chat] = puns[chat] if chat in puns else []
@@ -474,10 +489,10 @@ def removePun(argSet, pun):
     """
     Removes a pun from the pun list, then updates the file.
 
-    @param argSet The set of values passed in to messageListener.
-    @type argSet tuple
-    @param pun The pun to remove from the pun list.
-    @type pun string_types
+    :param argSet: The set of values passed in to messageListener.
+    :type argSet: tuple
+    :param pun: The pun to remove from the pun list.
+    :type pun: string_types
     """
     chat = getChatName(argSet[3])
     puns[chat] = puns[chat] if chat in puns else []
@@ -494,8 +509,8 @@ def addAlias(argSet, *_):
     """
     Adds an alias for a command, or replies what an alias runs.
 
-    @param argSet The set of values passed in to messageListener.
-    @type argSet tuple
+    :param argSet: The set of values passed in to messageListener.
+    :type argSet: tuple
     """
     chat = getChatName(argSet[3])
     aliases[chat] = aliases[chat] if chat in aliases else {}
@@ -532,10 +547,10 @@ def removeAlias(argSet, alias=u"", *_):
     """
     Removes an alias to a command.
 
-    @param argSet The set of values passed in to messageListener.
-    @type argSet tuple
-    @param alias The alias for the command.
-    @type alias string_types
+    :param argSet: The set of values passed in to messageListener.
+    :type argSet: tuple
+    :param alias: The alias for the command.
+    :type alias: string_types
     """
     chat = getChatName(argSet[3])
     aliases[chat] = aliases[chat] if chat in aliases else {}
@@ -557,14 +572,14 @@ def getFullUsername(argSet, partialName, nick=True):
     """
     Returns a user's alias given their partial name.
 
-    @param argSet The set of values passed in to messageListener.
-    @type argSet tuple
-    @param partialName The partial name of a user.
-    @type partialName string_types
-    @param nick Whether or not it should return the user's nickname.
-    @type nick bool
-    @return A user's alias.
-    @rtype string_types
+    :param argSet: The set of values passed in to messageListener.
+    :type argSet: tuple
+    :param partialName: The partial name of a user.
+    :type partialName: string_types
+    :param nick: Whether or not it should return the user's nickname.
+    :type nick: bool
+    :return A: user's alias.
+    :rtype string_types:
     """
     return getUserFromName(argSet, partialName, nick)
 
@@ -573,14 +588,14 @@ def getUserFromName(argSet, partialName, nick=True):
     """
     Returns the "name" of a user given their partial name.
 
-    @param argSet The set of values passed in to messageListener.
-    @type argSet tuple
-    @param partialName The partial name of a user.
-    @type partialName string_types
-    @param nick Whether or not it should check nicknames.
-    @type nick bool
-    @return A user's "name".
-    @rtype string_types
+    :param argSet: The set of values passed in to messageListener.
+    :type argSet: tuple
+    :param partialName: The partial name of a user.
+    :type partialName: string_types
+    :param nick: Whether or not it should check nicknames.
+    :type nick: bool
+    :return A: user's "name".
+    :rtype string_types:
     """
     chat = getChatName(argSet[3])
 
@@ -620,12 +635,12 @@ def Mimic(argSet, user=None, firstWordOfCmd=None, *_):
     """
     Runs a command as a different user.
 
-    @param argSet The set of values passed in to messageListener.
-    @type argSet tuple
-    @param user The partial name of the user to mimic.
-    @type user string_types
-    @param firstWordOfCmd The first word of the command to run, for syntax checking.
-    @type firstWordOfCmd string_types
+    :param argSet: The set of values passed in to messageListener.
+    :type argSet: tuple
+    :param user: The partial name of the user to mimic.
+    :type user: string_types
+    :param firstWordOfCmd: The first word of the command to run, for syntax checking.
+    :type firstWordOfCmd: string_types
     """
     if user is None or firstWordOfCmd is None:
         simpleReply(argSet, u"You need to specify the user to mimic and the command to mimic!")
@@ -651,8 +666,8 @@ def loc(argSet, *_):
     """
     Tells the chat you've gone somewhere.
 
-    @param argSet The set of values passed in to messageListener.
-    @type argSet tuple
+    :param argSet: The set of values passed in to messageListener.
+    :type argSet: tuple
     """
     findSpace = argSet[2].find(u" ")
     time = False
@@ -669,12 +684,12 @@ def Loc(argSet, location=u"GDS", time=defaultLocTime):
     """
     Tells the chat you've gone somewhere. Has default values for ease of implementation.
 
-    @param argSet The set of values passed in to messageListener.
-    @type argSet tuple
-    @param time The time in which you will be staying at the location.
-    @type time string_types
-    @param location The location you're going to.
-    @type location string_types
+    :param argSet: The set of values passed in to messageListener.
+    :type argSet: tuple
+    :param time: The time in which you will be staying at the location.
+    :type time: string_types
+    :param location: The location you're going to.
+    :type location: string_types
     """
     chat = getChatName(argSet[3])
     time = time if len(time) != 0 else defaultLocTime
@@ -696,8 +711,8 @@ def leftLoc(argSet, *_):
     """
     Tells the chat you've left wherever you are.
 
-    @param argSet The set of values passed in to messageListener.
-    @type argSet tuple
+    :param argSet: The set of values passed in to messageListener.
+    :type argSet: tuple
     """
     chat = getChatName(argSet[3])
     atLoc[chat] = atLoc[chat] if chat in atLoc else {}
@@ -716,18 +731,18 @@ def AtLoc(argSet, *_):
     """
     Replies with who is at the given location, or where everyone is if the location is not specified.
 
-    @param argSet The set of values passed in to messageListener.
-    @type argSet tuple
+    :param argSet: The set of values passed in to messageListener.
+    :type argSet: tuple
     """
 
     def toDate(string):
         """
         Converts the serialized datetime back to a datetime object, or uses now otherwise.
 
-        @param string The serialized datetime, as a string_types string.
-        @type string string_types
-        @return The unserialized string, as a datetime object.
-        @rtype datetime        """
+        :param string: The serialized datetime, as a string_types string.
+        :type string: string_types
+        :return The: unserialized string, as a datetime object.
+        :rtype datetime:        """
         if type(string) == datetime:
             return string
         try:
@@ -739,10 +754,10 @@ def AtLoc(argSet, *_):
         """
         Converts a serialized string back into a datetime object.
 
-        @param string The serialized string.
-        @type string string_types
-        @return The serialized string, as a datetime object.
-        @rtype timedelta
+        :param string: The serialized string.
+        :type string: string_types
+        :return The: serialized string, as a datetime object.
+        :rtype timedelta:
         """
         if type(string) == timedelta:
             if string > timedelta():
@@ -776,10 +791,10 @@ def scheduleEvent(argSet, quiet=False, *_):
     """
     Schedules the given command to run at the given time.
 
-    @param argSet The set of values passed in to messageListener.
-    @type argSet tuple
-    @param quiet Whether or not a message should be sent.
-    @type quiet boolean
+    :param argSet: The set of values passed in to messageListener.
+    :type argSet: tuple
+    :param quiet: Whether or not a message should be sent.
+    :type quiet: boolean
     """
     msg = argSet[2][len(commandDelimiter) + 9:]
     if commandDelimiter in msg:
@@ -800,8 +815,9 @@ def scheduleEvent(argSet, quiet=False, *_):
 def getEvents(argSet, *_):
     """
     Tells the user what events they have scheduled.
-    @param argSet The set of values passed in to messageListener.
-    @type argSet tuple
+
+    :param argSet: The set of values passed in to messageListener.
+    :type argSet: tuple
     """
     eventStrs = [u"[{}] {}: {} ({})".format(
         scheduledEvents.index(event),
@@ -818,8 +834,9 @@ def getEvents(argSet, *_):
 def getAllEvents(argSet, *_):
     """
     Replies with all of the scheduled events.
-    @param argSet The set of values passed in to messageListener.
-    @type argSet tuple
+
+    :param argSet: The set of values passed in to messageListener.
+    :type argSet: tuple
     """
     eventStrs = [u"[{}] {}: {} ({})".format(scheduledEvents.index(event),
         naturalTime(datetime.strptime(event[0], dtFormatStr) if type(event[0]) != datetime else event[0]), event[1][2],
@@ -834,10 +851,11 @@ def getAllEvents(argSet, *_):
 def removeEvent(argSet, index, *_):
     """
     Removes a scheduled event.
-    @param argSet The set of values passed in to messageListener
-    @type argSet tuple
-    @param index The index of the event to be removed.
-    @type index int
+
+    :param argSet: The set of values passed in to messageListener
+    :type argSet: tuple
+    :param index: The index of the event to be removed.
+    :type index: int
     """
     index = int(index)
     if getNameFromArgs(argSet[0], *scheduledEvents[index][1][1:2]) == getNameFromArgs(*argSet[:2]):
@@ -850,9 +868,10 @@ def removeEvent(argSet, index, *_):
 def setNick(argSet, user, *nick):
     """
     Sets a user's nickname.
-    @param argSet The set of values passed in to messageListener.
-    @param user The partial name of the user whose nick is to be set.
-    @param nick The new nickname.
+
+    :param argSet: The set of values passed in to messageListener.
+    :param user: The partial name of the user whose nick is to be set.
+    :param nick: The new nickname.
     """
     fullName = getFullUsername(argSet, user, False)
     chat = getChatName(argSet[3])
@@ -870,8 +889,9 @@ def setNick(argSet, user, *nick):
 def removeNick(argSet, user):
     """
     Removes the nickname from a user.
-    @param argSet The set of values passed in to messageListener.
-    @param user The partial name of the user whose nick is to be removed.
+
+    :param argSet: The set of values passed in to messageListener.
+    :param user: The partial name of the user whose nick is to be removed.
     """
     fullName = getFullUsername(argSet, user)
     chat = getChatName(argSet[3])
@@ -885,7 +905,8 @@ def removeNick(argSet, user):
 def getNicks(argSet):
     """
     Returns all of the nicknames.
-    @param argSet The set of values passed in to messageListener.
+
+    :param argSet: The set of values passed in to messageListener.
     """
     chat = getChatName(argSet[3])
     if chat not in nicks:
@@ -901,10 +922,10 @@ def numToEmoji(s):
     """
     Replaces numbers with emojis.
 
-    @param s The string to replace the numbers of with emojis.
-    @type s string_types
-    @return The provided string with its numbers replaced with emojis.
-    @rtype string_types
+    :param s: The string to replace the numbers of with emojis.
+    :type s: string_types
+    :return: The provided string with its numbers replaced with emojis.
+    :rtype string_types:
     """
     for i in range(len(dice)):
         s = s.replace(u"" + str(i), dice[i])  # Force string_types strings for Python 2 and Python 3.
@@ -914,7 +935,8 @@ def numToEmoji(s):
 def exitProcess(code):
     """
     Exits like sys.exit, killing any other processes run by this one.
-    @param code the exit code.
+
+    :param code: the exit code.
     """
     global running, exitCode
     running = False  # Go away, GLib.timeout.
@@ -934,10 +956,10 @@ def diceRoll(argSet, diceStr=u"", *_):
     """
     Returns a dice roll of the given dice.
 
-    @param argSet The set of values passed in to messageListener.
-    @type argSet tuple
-    @param diceStr The string used to specify the type of dice, in the form [numDice]d[diceSides]
-    @type diceStr string_types
+    :param argSet: The set of values passed in to messageListener.
+    :type argSet: tuple
+    :param diceStr: The string used to specify the type of dice, in the form [numDice]d[diceSides]
+    :type diceStr: string_types
     """
     numDice, numSides = 1, 6  # Defaults to 1d6
     if u"d" in diceStr.lower():
@@ -945,17 +967,16 @@ def diceRoll(argSet, diceStr=u"", *_):
     elif diceStr.isdigit():
         numDice = int(diceStr)
     rolls = [randint(1, numSides) for _ in range(numDice)]  # Roll the dice
-    simpleReply(argSet,
-        numToEmoji(u"".join(str(s) + u" " for s in rolls) + u"\nSum={}\nMax={}\nMin={}".format(sum(rolls), max(rolls),
-            min(rolls))))
+    simpleReply(argSet, numToEmoji(u"".join(str(s) + u" " for s in rolls) + u"\nSum={}\nMax={}\nMin={}".format(
+        sum(rolls), max(rolls), min(rolls))))
 
 
 def to(argSet, *args):
     """
     Provides %target as an alias variable, then replies with the parsed string.
 
-    @param argSet The set of values passed in to messageListener.
-    @type argSet tuple
+    :param argSet: The set of values passed in to messageListener.
+    :type argSet: tuple
     """
     if len(args) == 0:
         simpleReply(argSet, u"You need to provide some arguments!")
@@ -974,16 +995,17 @@ def to(argSet, *args):
 def findNthInstance(n, haystack, needle):
     """
     Finds the nth instance of needle in haystack.
-    @type n int
-    @param n How many instances to look for.
-    @type haystack string_types
-    @param haystack What to search through
-    @type needle string_types
-    @param needle What to look for.
-    @return n, or 0 if none is found.
+
+    :type n: int
+    :param n: How many instances to look for.
+    :type haystack: string_types
+    :param haystack: What to search through
+    :type needle: string_types
+    :param needle: What to look for.
+    :return n:, or 0 if none is found.
     """
     if n < 1:
-        raise ArgumentError(message=u"You can't look for the nonpositive instance of something!")
+        raise ArgumentError(u"", u"You can't look for the nonpositive instance of something!")
     numFound = 0
     for i in range(len(haystack) - len(needle) + 1):
         numFound += haystack[i:i + len(needle)] == needle
@@ -995,10 +1017,11 @@ def findNthInstance(n, haystack, needle):
 def getYTURL(queryMsg):
     """
     Gets the URL of the first YouTube video when searching for queryMsg.
-    @type queryMsg string_types
-    @param queryMsg The search term to use to find the video.
-    @rtype string_types
-    @return The URL of the YouTube video, as a string.
+
+    :type queryMsg: string_types
+    :param queryMsg: The search term to use to find the video.
+    :rtype string_types:
+    :return The: URL of the YouTube video, as a string.
     """
     dl = ydl()
     with dl:
@@ -1009,8 +1032,9 @@ def getYTURL(queryMsg):
 def listUsers(argSet, *_):
     """
     Lists all of the users in this chat and all connected ones.
-    @param argSet The set of values passed in to messageListener.
-    @type argSet tuple
+
+    :param argSet: The set of values passed in to messageListener.
+    :type argSet: tuple
     """
     chat = getChatName(argSet[3])
     chats = [argSet[3]]
@@ -1070,9 +1094,9 @@ commands = {  # A dict containing the functions to run when a given command is e
     u"ping":         lambda argSet, *_: simpleReply(argSet, u"Pong!"),
     u"pun":          lambda argSet, _pun=u"", *_: pun(argSet, _pun),
     u"removenick":   removeNick,
-    u"removepun":    lambda argSet, pun, *_: removePun(argSet, pun),
-    u"replace":      lambda argSet, start, end, *_: simpleReply(argSet,
-        re.compile(re.escape(start), re.IGNORECASE).sub(end, argSet[2][findNthInstance(3, argSet[2], u" ") + 1:])),
+    u"removepun":    lambda argSet, *_: removePun(argSet, argSet[2][10 + len(commandDelimiter):]),
+    u"replace":      lambda argSet, start, end, *_: simpleReply(argSet, re.compile(re.escape(start), re.IGNORECASE).sub(
+        end, argSet[2][findNthInstance(3, argSet[2], u" ") + 1:])),
     u"restart":      lambda argSet, *_: restartBot(argSet),
     u"schedule":     scheduleEvent,
     u"setnick":      setNick,
@@ -1131,12 +1155,12 @@ def runCommand(argSet, command, *args):
     """
     Runs the command given the argSet and the command it's trying to run.
 
-    @param argSet The set of values passed in to messageListener.
-    @type argSet tuple
-    @param command The command to run.
-    @type command string_types
-    @return If the given command could be run, either as a command or an alias.
-    @rtype bool
+    :param argSet: The set of values passed in to messageListener.
+    :type argSet: tuple
+    :param command: The command to run.
+    :type command: string_types
+    :return If: the given command could be run, either as a command or an alias.
+    :rtype bool:
     """
     command = (command or argSet[2][:argSet[2].find(u" ")]).lower()
     chat = getChatName(argSet[3])
@@ -1165,8 +1189,8 @@ def runCommand(argSet, command, *args):
             newMsg = replaceAliasVars(argSet, message.replace(command, cmd, 1))
             # Get the extra arguments to the function and append them at the end.
             extraArgs = newMsg.split(u" ")[1:]
-            commands[cmd.split(u" ", 1)[0]]((argSet[0], argSet[1], newMsg, argSet[3], argSet[4]),
-                *extraArgs)  # Run the alias's command
+            # Run the alias's command
+            commands[cmd.split(u" ", 1)[0]]((argSet[0], argSet[1], newMsg, argSet[3], argSet[4]), *extraArgs)
             return True
     return False
 
@@ -1175,14 +1199,14 @@ def sendMessage(sending, receiving, nick, message):
     """
     Sends a message on the given chat.
 
-    @param sending The id of the sending chat.
-    @type sending int
-    @param receiving The id of the receiving chat.
-    @type receiving int
-    @param nick The nickname of the user, for logging purposes
-    @type nick string_types
-    @param message The message to send out.
-    @type message string_types
+    :param sending: The id of the sending chat.
+    :type sending: int
+    :param receiving: The id of the receiving chat.
+    :type receiving: int
+    :param nick: The nickname of the user, for logging purposes
+    :type nick: string_types
+    :param message: The message to send out.
+    :type message: string_types
     """
     if receiving is None:  # If the conversation can't be found by libpurple, it'll just error anyway.
         return
@@ -1218,16 +1242,16 @@ def messageListener(account, sender, message, conversation, flags):
     """
     The function that runs when a message is received.
 
-    @param account The account the message was received on.
-    @type account int
-    @param sender The name of the chat the message was sent from.
-    @type sender string_types
-    @param message The received message.
-    @type message string_types
-    @param conversation The conversation in which this message was received.
-    @type conversation int
-    @param flags Any flags for this message, such as the type of message.
-    @type flags tuple
+    :param account: The account the message was received on.
+    :type account: int
+    :param sender: The name of the chat the message was sent from.
+    :type sender: string_types
+    :param message: The received message.
+    :type message: string_types
+    :param conversation: The conversation in which this message was received.
+    :type conversation: int
+    :param flags: Any flags for this message, such as the type of message.
+    :type flags: tuple
     """
     global lastMessageTime, lastMessage
     try:
@@ -1236,8 +1260,8 @@ def messageListener(account, sender, message, conversation, flags):
         message = u"" + message
     try:
         lastMessage[conversation] = u"" + (
-                    conversation in lastMessage and lastMessage[conversation].decode(encoding=u"utf-8",
-                errors=u"ignore") or u"")
+                conversation in lastMessage and lastMessage[conversation].decode(encoding=u"utf-8",
+            errors=u"ignore") or u"")
     except:
         lastMessage[conversation] = u"" + (conversation in lastMessage and lastMessage[conversation] or u"")
     argSet = (account, sender, message, conversation, flags)
@@ -1258,6 +1282,7 @@ def messageListener(account, sender, message, conversation, flags):
             return
     except:
         pass
+    # noinspection DuplicatedCode
     title = purple.PurpleConversationGetTitle(conversation)
     if title in messageLinks:  # Gets conversations by their title, so they work across libpurple reboots.
         if isListButNotString(messageLinks[title]):
@@ -1282,8 +1307,7 @@ def messageListener(account, sender, message, conversation, flags):
         args = message.split(u" ")[1:]
         try:
             if not runCommand(argSet, command.lower(), *args):
-                simpleReply(argSet, u"Command/alias \"{}\" not found. {}".format(
-                    command, getCommands(argSet)))
+                simpleReply(argSet, u"Command/alias \"{}\" not found. {}".format(command, getCommands(argSet)))
         except SystemExit:  # This isn't an error, so it's okay.
             exitProcess(SIGQUIT)
             return
@@ -1298,10 +1322,11 @@ def messageListener(account, sender, message, conversation, flags):
 def processEvents(threshold=timedelta(seconds=2)):
     """
     Processes any events that are in the eventQueue.
-    @param threshold How long after the event is supposed to run until it's discarded.
-    @type threshold timedelta
-    @return True
-    @rtype bool
+
+    :param threshold: How long after the event is supposed to run until it's discarded.
+    :type threshold: timedelta
+    :return: True
+    :rtype bool:
     """
     eventRemoved = False
     for event in scheduledEvents:
@@ -1332,16 +1357,17 @@ def processEvents(threshold=timedelta(seconds=2)):
 def queueMessage(account, sender, message, conversation, flags):
     """
     Queues up a message for messageListener to allow for rate-limiting.
-    @param account The account the message was received on.
-    @type account int
-    @param sender The name of the chat the message was sent from.
-    @type sender string_types
-    @param message The received message.
-    @type message string_types
-    @param conversation The conversation in which this message was received.
-    @type conversation int
-    @param flags Any flags for this message, such as the type of message.
-    @type flags tuple
+
+    :param account: The account the message was received on.
+    :type account: int
+    :param sender: The name of the chat the message was sent from.
+    :type sender: string_types
+    :param message: The received message.
+    :type message: string_types
+    :param conversation: The conversation in which this message was received.
+    :type conversation: int
+    :param flags: Any flags for this message, such as the type of message.
+    :type flags: tuple
     """
     argSet = (account, sender, message, conversation, flags)
     if purple.PurpleAccountGetAlias(account) == sender or \
@@ -1356,8 +1382,8 @@ def periodicLoop():
     """
     Used for any tasks that may need to run in the background.
 
-    @return True if the program is not closing, False if it is closing.
-    @rtype bool
+    :return True: if the program is not closing, False if it is closing.
+    :rtype bool:
     """
     processEvents()
     msgQueueLen = len(messageQueue)
