@@ -13,7 +13,7 @@ from argparse import ArgumentError
 from datetime import datetime, timedelta
 from io import open
 from itertools import chain
-from json import dumps as writeToJSON, loads as readFromJSON
+from json import dumps, loads
 from math import ceil
 from os import system as executeCommand
 from random import randint
@@ -53,7 +53,7 @@ def readFile(path):
             strFile = fileHandle.read()
             if out is None and strFile != u"":
                 try:
-                    out = readFromJSON(strFile)
+                    out = loads(strFile)  # json.loads is WAY faster than ast.literal_eval!
                 except ValueError:
                     pass
     except IOError:
@@ -91,7 +91,7 @@ def updateFile(path, value):
 
     serializeDate = lambda dtOrStr: dtOrStr.strftime(dtFormatStr) if isinstance(dtOrStr, datetime) else None
     with open(path, mode=u"w", encoding=u"utf-8") as openFile:  # To update a file
-        openFile.write(writeToJSON(value, indent=4, default=serializeDate, ensure_ascii=False))
+        openFile.write(dumps(value, indent=4, default=serializeDate, ensure_ascii=False))
         # The default function allows it to dump datetime objects.
 
 
@@ -112,11 +112,10 @@ def getNameFromArgs(act, name, conv=None):
     act = purple.PurpleConversationGetAccount(conv) if conv is not None else act
     buddy = purple.PurpleFindBuddy(act, name)
     realName = purple.PurpleBuddyGetAlias(buddy) or purple.PurpleBuddyGetName(buddy)
-    acct = purple.PurpleBuddyGetAccount(buddy)
     chat = None  # This is here so PyCharm doesn't complain about chat not existing in the return statement.
     if conv is not None:
         chat = getChatName(conv)
-    return (nicks[chat].get(realName, realName) if conv is not None and chat in nicks else realName) or name
+    return (nicks[chat].get(realName, realName) if chat in nicks else realName) or name
 
 
 getChatName = lambda chatId: purple.PurpleConversationGetTitle(chatId)  # Gets the name of a chat given the chat's ID.
@@ -209,7 +208,8 @@ def getFullConvName(partialName):
     """
     conversations = [purple.PurpleConversationGetTitle(conv) for conv in getChats()]
     # Check the beginning first, if none start with the partial name, find it in there somewhere.
-    return next((i for i in conversations if i[:len(partialName)] == partialName), None) or \
+    return next((i for i in conversations if i == partialName), None) or \
+           next((i for i in conversations if i[:len(partialName)] == partialName), None) or \
            next((i for i in conversations if partialName in i), None)
 
 
@@ -268,8 +268,8 @@ messageLinks, puns, aliases, atLoc, scheduledEvents, nicks, commandDelimiters = 
     u"Puns.json", u"Aliases.json", u"atLoc.json", u"scheduledEvents.json", u"nicks.json", u"commandDelimiters.json")
 
 commandDelimiter = u"!"  # What character(s) the commands should start with.
-commandDelimiters = commandDelimiters or dict()
-lastMessage = dict()  # The last message, to prevent infinite looping.
+commandDelimiters = commandDelimiters or {}
+lastMessage = {}  # The last message, to prevent infinite looping.
 defaultLocMinutes = 45
 defaultLocTime = u"{} minutes".format(defaultLocMinutes)  # What to use when someone goes somewhere by default.
 now = datetime.now
@@ -282,10 +282,11 @@ aliases = aliases or {}
 atLoc = atLoc or {}
 scheduledEvents = scheduledEvents or []
 aliasVars = [  # Replace the string with the result from the lambda below.
-    (u"%sendername", lambda argSet: getNameFromArgs(argSet[0], argSet[1], argSet[3])),
+    (u"%sendername", lambda argSet: purple.PurpleBuddyGetName(purple.PurpleFindBuddy(argSet[0], argSet[1]))),
+    (u"%senderalias", lambda argSet: purple.PurpleBuddyGetAlias(purple.PurpleFindBuddy(argSet[0], argSet[1]))),
     (u"%botname", lambda argSet: purple.PurpleAccountGetAlias(argSet[0])),
     (u"%chattitle", lambda argSet: purple.PurpleConversationGetTitle(argSet[3])),
-    (u"%chatname", lambda argSet: purple.PurpleConversationGetName(argSet[3])),
+    (u"%chatname", lambda argSet: purple.PurpleConversationGetName(argSet[3]))
 ]
 nicks = nicks or {}
 dtFormatStr = u"%a, %d %b %Y %H:%M:%S UTC"
@@ -369,17 +370,17 @@ def pun(argSet, *punFilter):
     :type punFilter: string_types
     :return A: random pun from puns.json.
     :rtype string_types:    """
-    chat = getChatName(argSet[3])
-    puns[chat] = puns[chat] if chat in puns else []
-    if len(puns[chat]) == 0:
-        return simpleReply(argSet, u"No puns found!")
-    if len(punFilter) == 0:
-        return tellPun(argSet, puns[chat][randint(0, len(puns[chat]) - 1)])
-    validPuns = list(filter(lambda pun: str(u" ".join(punFilter)) in str(pun), puns[chat]))
+    chats = [getChatName(argSet[3])]
+    chats += messageLinks[chats[0]]
+    combinedPuns = [pun for pun in [puns[chat] for chat in chats]]
+    if len(combinedPuns) == 0:
+        return u"No puns found!"
+    if not punFilter:
+        return combinedPuns[randint(0, len(combinedPuns) - 1)]
+    validPuns = list(filter(lambda pun: str(u" " + punFilter) in str(pun), combinedPuns))
     chosenPun = (validPuns[randint(0, len(validPuns) - 1)]) if len(validPuns) > 0 else (
-            u"Does not punpute! Random Pun:\n" + puns[chat][randint(0, len(puns) - 1)])
+            u"Does not punpute! Random Pun: " + combinedPuns[randint(0, len(puns) - 1)])
     tellPun(argSet, chosenPun)
-
 
 def Help(argSet, page=u"", *_):
     """
@@ -424,17 +425,10 @@ def Link(argSet, chat, *chats):
     if fullChatName is None:
         simpleReply(argSet, u"No chat by name {} found.".format(chat))
         return
-    for i in range(len(fullChatNames)):
-        if fullChatNames[i] is None:
-            simpleReply(argSet, u"No chat by name {} found.".format(chats[i]))
-            return
     if fullChatName in messageLinks:
-        messageLinks[fullChatName] = set(messageLinks[fullChatName])
-        messageLinks[fullChatName].intersection(fullChatNames)
+        messageLinks[fullChatName] = sorted(list(set(messageLinks[fullChatName] + fullChatNames)))
     else:
-        messageLinks[fullChatName] = [fullChatNames, ]
-    if len(messageLinks[fullChatName]) == 1:
-        messageLinks[fullChatName] = messageLinks[fullChatName][0]
+        messageLinks[fullChatName] = fullChatNames
     updateFile(u"messageLinks.json", messageLinks)
     simpleReply(argSet, u"{} linked to {}.".format(u", ".join(str(i) for i in fullChatNames), fullChatName))
 
@@ -521,9 +515,9 @@ def addAlias(argSet, *_):
     command = command[len(commandDelimiter):] if command[:len(commandDelimiter)] == commandDelimiter else command
     argsMsg = message[message.find(u" ") + 1 + len(commandDelimiter):]
     if u" " not in message:  # If the user is asking for the command run by a specific alias.
-        for _chat in (chat in messageLinks and messageLinks[chat] or [chat]):
-            if str(command) in aliases[_chat]:  # If the alias asked for does not exist.
-                chat = _chat
+        for currentChat in (messageLinks[chat] if chat in messageLinks else [chat]):
+            if str(command) in aliases[currentChat]:  # If the alias asked for does not exist.
+                chat = currentChat
                 break
         else:
             simpleReply(argSet, u"No alias \"{}\" found.".format(str(command)))
@@ -557,7 +551,7 @@ def removeAlias(argSet, alias=u"", *_):
     if not alias:
         simpleReply(argSet, u"Enter an alias to remove!")
         return
-    if alias[:len(commandDelimiter)] == commandDelimiter:
+    if alias.startswith(commandDelimiter):
         alias = alias[len(commandDelimiter):]
     if alias in aliases[chat]:
         aliases[chat].pop(alias)
@@ -569,22 +563,6 @@ def removeAlias(argSet, alias=u"", *_):
 
 
 def getFullUsername(argSet, partialName, nick=True):
-    """
-    Returns a user's alias given their partial name.
-
-    :param argSet: The set of values passed in to messageListener.
-    :type argSet: tuple
-    :param partialName: The partial name of a user.
-    :type partialName: string_types
-    :param nick: Whether or not it should return the user's nickname.
-    :type nick: bool
-    :return A: user's alias.
-    :rtype string_types:
-    """
-    return getUserFromName(argSet, partialName, nick)
-
-
-def getUserFromName(argSet, partialName, nick=True):
     """
     Returns the "name" of a user given their partial name.
 
@@ -601,30 +579,36 @@ def getUserFromName(argSet, partialName, nick=True):
 
     # Special case the bot's name
     botName = purple.PurpleAccountGetAlias(argSet[0])
-    if partialName.lower() == botName[:len(partialName)].lower() or partialName.lower() in botName.lower():
+    if botName.lower().startswith(partialName.lower()) or partialName.lower() in botName.lower():
         return botName if chat not in nicks or (u"" + botName) not in nicks[chat] or not nick else nicks[chat][
             u"" + botName]
 
     chats = [argSet[3]]
+    # Get all of the chats provided by libpurple.
     if chat in messageLinks and messageLinks[chat]:
         chats += [_chat for _chat in getChats() if getChatName(_chat) in messageLinks[chat]]
-    users = dict()
-    _users = list(chain([purple.PurpleConvChatGetUsers(purple.PurpleConvChat(int(chat)))] for chat in chats))
-    for i in range(len(_users)):
-        users[chats[i]] = _users[i][0]
-    buddies = dict()
-    for _chat, _users in users.items():
-        buddies[_chat] = []
-        for i in range(len(_users)):
-            buddies[_chat].append(purple.PurpleConvChatCbGetName(_users[i]))
+
+    usersByChat = {}
+    # Get all of the users from the chats we have.
+    users = list(chain([purple.PurpleConvChatGetUsers(purple.PurpleConvChat(int(chat)))] for chat in chats))
+    for i in range(len(users)):
+        usersByChat[chats[i]] = users[i][0]
+    # Convert the users in all chats into buddies and collect them together.
+    buddies = {}
+    for userChat, users in usersByChat.items():
+        buddies[userChat] = []
+        for i in range(len(users)):
+            buddies[userChat].append(purple.PurpleConvChatCbGetName(users[i]))
+    # Convert the buddies into the names of those buddies.
     names = []
-    for _chat, _buddies in buddies.items():
-        for buddy in _buddies:
-            names.append(getNameFromArgs(argSet[0], buddy, _chat))
-    del names[len(names) - 1]
+    for userChat, chatBuddies in buddies.items():
+        for buddy in chatBuddies:
+            names.append(getNameFromArgs(argSet[0], buddy, userChat))
+
     rng = range(len(names))
-    # Check the beginning first, otherwise, check if the partialname is somewhere in the name.
-    name = (next((names[i] for i in rng if names[i][:len(partialName)].lower() == partialName.lower()), None) or
+    # Check if they match, then the beginning, then check if the partial name is somewhere in the name.
+    name = (next((names[i] for i in rng if names[i].lower() == partialName.lower()), None) or
+            next((names[i] for i in rng if names[i].lower().startswith(partialName.lower())), None) or
             next((names[i] for i in rng if partialName.lower() in names[i].lower()), None))
     if nick and name is not None and chat in nicks and (u"" + name) in nicks[chat]:
         return nicks[chat][u"" + name]
@@ -645,7 +629,7 @@ def Mimic(argSet, user=None, firstWordOfCmd=None, *_):
     if user is None or firstWordOfCmd is None:
         simpleReply(argSet, u"You need to specify the user to mimic and the command to mimic!")
         return
-    fullUser = getUserFromName(argSet, user, False)
+    fullUser = getFullUsername(argSet, user, False)
 
     if fullUser is None:
         simpleReply(argSet, u"No user by the name \"{}\" found.".format(user))
@@ -752,11 +736,11 @@ def AtLoc(argSet, *_):
 
     def toDelta(string):
         """
-        Converts a serialized string back into a datetime object.
+        Converts a serialized string back into a timedelta object.
 
         :param string: The serialized string.
         :type string: string_types
-        :return The: serialized string, as a datetime object.
+        :return The: serialized string, as a timedelta object.
         :rtype timedelta:
         """
         if type(string) == timedelta:
@@ -1038,22 +1022,29 @@ def listUsers(argSet, *_):
     """
     chat = getChatName(argSet[3])
     chats = [argSet[3]]
+
+    # Get all of the chats provided by libpurple.
     if chat in messageLinks and messageLinks[chat]:
         chats += [_chat for _chat in getChats() if getChatName(_chat) in messageLinks[chat]]
-    users = dict()
-    _users = list(chain([purple.PurpleConvChatGetUsers(purple.PurpleConvChat(int(chat)))] for chat in chats))
-    for i in range(len(_users)):
-        users[chats[i]] = _users[i][0]
-    buddies = dict()
-    for _chat, _users in users.items():
-        buddies[_chat] = []
-        for i in range(len(_users)):
-            buddies[_chat].append(purple.PurpleConvChatCbGetName(_users[i]))
+
+    usersByChat = {}
+    # Get all of the users from the chats we have.
+    users = list(chain([purple.PurpleConvChatGetUsers(purple.PurpleConvChat(int(chat)))] for chat in chats))
+    for i in range(len(users)):
+        usersByChat[chats[i]] = users[i][0]
+
+    # Convert the users in all chats into buddies and collect them together.
+    buddies = {}
+    for userChat, users in usersByChat.items():
+        buddies[userChat] = []
+        for i in range(len(users)):
+            buddies[userChat].append(purple.PurpleConvChatCbGetName(users[i]))
+
+    # Convert the buddies into the names of those buddies.
     names = []
-    for _chat, _buddies in buddies.items():
-        for buddy in _buddies:
-            names.append(getNameFromArgs(argSet[0], buddy, _chat))
-    del names[len(names) - 1]
+    for userChat, chatBuddies in buddies.items():
+        for buddy in chatBuddies:
+            names.append(getNameFromArgs(argSet[0], buddy, userChat))
     simpleReply(argSet, str(sorted(names)))
 
 
@@ -1164,6 +1155,9 @@ def runCommand(argSet, command, *args):
     """
     command = (command or argSet[2][:argSet[2].find(u" ")]).lower()
     chat = getChatName(argSet[3])
+    global commandDelimiter
+    oldCommandDelimiter = commandDelimiter
+    commandDelimiter = commandDelimiters[chat] if chat in commandDelimiters else commandDelimiter
     aliases[chat] = aliases[chat] if chat in aliases else {}
     if command in commands:
         commands[command](argSet, *args)
@@ -1189,9 +1183,11 @@ def runCommand(argSet, command, *args):
             newMsg = replaceAliasVars(argSet, message.replace(command, cmd, 1))
             # Get the extra arguments to the function and append them at the end.
             extraArgs = newMsg.split(u" ")[1:]
-            # Run the alias's command
-            commands[cmd.split(u" ", 1)[0]]((argSet[0], argSet[1], newMsg, argSet[3], argSet[4]), *extraArgs)
+            commands[cmd.split(u" ", 1)[0]]((argSet[0], argSet[1], newMsg, argSet[3], argSet[4]),
+                *extraArgs)  # Run the alias's command
+            commandDelimiter = oldCommandDelimiter
             return True
+    commandDelimiter = oldCommandDelimiter
     return False
 
 
@@ -1254,6 +1250,8 @@ def messageListener(account, sender, message, conversation, flags):
     :type flags: tuple
     """
     global lastMessageTime, lastMessage
+
+    # Deal with Python 2 and 3 compatibility
     try:
         message = u"" + message.decode(encoding=u"utf-8", errors=u"ignore")
     except:
@@ -1267,42 +1265,16 @@ def messageListener(account, sender, message, conversation, flags):
     argSet = (account, sender, message, conversation, flags)
     lastMessageTime = now()
 
-    nick = getNameFromArgs(account, sender) or sender  # Name which will appear on the log.
+    nick = getNameFromArgs(account, sender, conversation) or sender  # Name which will appear on the log.
 
-    try:  # Logs messages. Logging errors will not prevent commands from working.
+    # Logs messages. Logging errors will not prevent commands from working.
+    try:
         log(u"[{}] {}: {}\n".format(now().isoformat(), nick, (u"" + str(message))))
         logFile.flush()
     except UnicodeError:
         pass
-
-    # Send messages to connected chats.
-    try:
-        if message == lastMessage[conversation] or purple.PurpleAccountGetNameForDisplay(
-                account) == nick:  # Makes sure the messages don't loop infinitely.
-            return
-    except:
-        pass
-    # noinspection DuplicatedCode
-    title = purple.PurpleConversationGetTitle(conversation)
-    if title in messageLinks:  # Gets conversations by their title, so they work across libpurple reboots.
-        if isListButNotString(messageLinks[title]):
-            for receiving in messageLinks[title]:  # It can send to multiple chats.
-                receiving = getConvByName(receiving)
-                sendMessage(conversation, receiving, nick, message)
-        else:
-            receiving = getConvByName(messageLinks[title])
-            sendMessage(conversation, receiving, nick, message)
-    lastMessage[conversation] = nick + u": " + message  # Remember the last message to prevent infinite looping.
-
     # Run commands if the message starts with the command character.
-    global wasCommand, commandDelimiter
-    wasCommand = False
-    oldCommandDelimiter = commandDelimiter
-    chat = getChatName(conversation)
-    commandDelimiter = commandDelimiters[chat] if chat in commandDelimiters else oldCommandDelimiter
-
     if message[:len(commandDelimiter)] == commandDelimiter:
-        wasCommand = True
         command = message[len(commandDelimiter):message.find(u" ") if u" " in message else len(message)].lower()
         args = message.split(u" ")[1:]
         try:
@@ -1316,7 +1288,23 @@ def messageListener(account, sender, message, conversation, flags):
             return
         except:
             simpleReply(argSet, u"Command errored! Error message: \"{}\"".format(traceback.format_exc()))
-    commandDelimiter = oldCommandDelimiter
+
+    # Send messages to connected chats.
+    try:
+        if message == lastMessage:  # Makes sure the messages don't loop infinitely.
+            return
+    except:
+        pass
+    title = purple.PurpleConversationGetTitle(conversation)
+    if title in messageLinks:  # Gets conversations by their title, so they work across libpurple reboots.
+        if isListButNotString(messageLinks[title]):
+            for receiving in messageLinks[title]:  # It can send to multiple chats.
+                receiving = getConvByName(receiving)
+                sendMessage(conversation, receiving, nick, message)
+        else:
+            receiving = getConvByName(messageLinks[title])
+            sendMessage(conversation, receiving, nick, message)
+    lastMessage = nick + u": " + message  # Remember the last message to prevent infinite looping.
 
 
 def processEvents(threshold=timedelta(seconds=2)):
@@ -1370,10 +1358,11 @@ def queueMessage(account, sender, message, conversation, flags):
     :type flags: tuple
     """
     argSet = (account, sender, message, conversation, flags)
-    if purple.PurpleAccountGetAlias(account) == sender or \
-            purple.PurpleAccountGetAlias(account) == getNameFromArgs(account, sender) or \
-            purple.PurpleAccountGetUsername(account) == sender or \
-            purple.PurpleAccountGetUsername(account) == getNameFromArgs(account, sender):
+    possibleNames = (purple.PurpleAccountGetAlias(account),
+    purple.PurpleAccountGetAlias(account),
+    getNameFromArgs(account, sender, conversation),
+    purple.PurpleAccountGetUsername(account))
+    if sender in possibleNames:
         return
     messageQueue.append(argSet)
 
